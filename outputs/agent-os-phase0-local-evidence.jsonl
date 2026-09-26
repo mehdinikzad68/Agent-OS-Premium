@@ -1,0 +1,33 @@
+{"check": "ProbeScope", "checkedAt": "2026-09-21T23:36:31.638163+03:30", "method": "Read-only installation metadata; no runtime invocation"}
+{"check": "WindowsRegistry", "data": {"ProductName": "Windows 10 Pro", "DisplayVersion": "26H1", "CurrentBuildNumber": "28000", "UBR": 2956, "EditionID": "Professional"}}
+{"check": "ExecutableOnPath", "name": "docker.exe", "path": "C:\\Users\\Mehdi\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\docker.exe"}
+{"check": "ExecutableOnPath", "name": "wsl.exe", "path": "C:\\WINDOWS\\system32\\wsl.exe"}
+{"check": "ExecutableOnPath", "name": "wslconfig.exe", "path": "C:\\Users\\Mehdi\\AppData\\Local\\Microsoft\\WindowsApps\\wslconfig.exe"}
+{"check": "ExecutableOnPath", "name": "vmrun.exe", "path": null}
+{"check": "ExecutableOnPath", "name": "vmware.exe", "path": null}
+{"check": "ExecutableOnPath", "name": "VBoxManage.exe", "path": null}
+{"check": "ExecutableOnPath", "name": "VirtualBox.exe", "path": null}
+{"check": "ExecutableOnPath", "name": "qemu-system-x86_64.exe", "path": null}
+{"check": "KnownExecutablePath", "path": "C:/Program Files/Docker/Docker/Docker Desktop.exe", "present": false}
+{"check": "KnownExecutablePath", "path": "C:/Program Files/Docker/Docker/resources/bin/docker.exe", "present": false}
+{"check": "KnownExecutablePath", "path": "C:/Program Files/Docker/Docker/resources/com.docker.backend.exe", "present": false}
+{"check": "KnownExecutablePath", "path": "C:/Program Files/Oracle/VirtualBox/VBoxManage.exe", "present": false}
+{"check": "KnownExecutablePath", "path": "C:/Program Files (x86)/VMware/VMware Workstation/vmware.exe", "present": false}
+{"check": "KnownExecutablePath", "path": "C:/Program Files/VMware/VMware Workstation/vmware.exe", "present": false}
+{"check": "KnownExecutablePath", "path": "C:/Windows/System32/vmconnect.exe", "present": false}
+{"check": "KnownExecutablePath", "path": "C:/Windows/System32/wsl.exe", "present": true}
+{"check": "ServiceRegistrationAndState", "name": "com.docker.service", "registryPresent": false, "details": null, "observedState": "unavailable", "queryError": 1060}
+{"check": "ServiceRegistrationAndState", "name": "WslService", "registryPresent": true, "details": {"DisplayName": "WSL Service", "Start": 2}, "observedState": "running", "queryError": null}
+{"check": "ServiceRegistrationAndState", "name": "LxssManager", "registryPresent": false, "details": null, "observedState": "unavailable", "queryError": 1060}
+{"check": "ServiceRegistrationAndState", "name": "vmcompute", "registryPresent": true, "details": {"DisplayName": "@%systemroot%\\system32\\vmcompute.exe,-100", "Start": 3}, "observedState": "running", "queryError": null}
+{"check": "ServiceRegistrationAndState", "name": "vmms", "registryPresent": false, "details": null, "observedState": "unavailable", "queryError": 1060}
+{"check": "ServiceRegistrationAndState", "name": "hns", "registryPresent": true, "details": {"DisplayName": "@%systemroot%\\system32\\HostNetSvc.dll,-100", "Start": 3}, "observedState": "running", "queryError": null}
+{"check": "ServiceRegistrationAndState", "name": "VMAuthdService", "registryPresent": false, "details": null, "observedState": "unavailable", "queryError": 1060}
+{"check": "ServiceRegistrationAndState", "name": "VMnetDHCP", "registryPresent": false, "details": null, "observedState": "unavailable", "queryError": 1060}
+{"check": "ServiceRegistrationAndState", "name": "VBoxSDS", "registryPresent": false, "details": null, "observedState": "unavailable", "queryError": 1060}
+{"check": "WSLUserRegistration", "present": true, "settings": {}}
+{"check": "WSLDistributionRegistration", "data": {"DistributionName": "Ubuntu-26.04", "Version": 2}}
+{"check": "WSLDistributionRegistration", "data": {"DistributionName": "docker-desktop", "Version": 2}}
+{"check": "InstalledProductRegistration", "hive": "HKLM", "data": {"DisplayName": "Windows Subsystem for Linux", "DisplayVersion": "2.7.13.0"}}
+{"check": "InstalledProductRegistration", "hive": "HKCU", "data": {"DisplayName": "Docker Desktop", "DisplayVersion": "4.92.0"}}
+{"check": "ProbeComplete", "runtime_launches": 0, "network_requests": 0}

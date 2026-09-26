@@ -1,0 +1,12 @@
+step 1 ok: UI served at /
+step 2 ok: auth fail-closed (401)
+step 3 ok: status version=0.2.0 executors=['fake-executor']
+step 4 ok: mission created + activated
+step 5 ok: proposed -> approval requested -> granted by human
+step 6 ok: dispatched -> completed_verified
+step 7 ok: duplicate dispatch idempotent
+step 8 ok: unapproved dispatch refused (409, before execution)
+step 9 ok: audit trail complete (9 events)
+step 10 ok: restart durability verified
+step 11 ok: evidence persisted and served after restart
+RESULT: PASS

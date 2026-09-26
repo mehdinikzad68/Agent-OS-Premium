@@ -1,0 +1,56 @@
+test_create_mission (tests.test_api.ApiUnitTest.test_create_mission) ... ok
+test_decide_over_http_is_always_human (tests.test_api.ApiUnitTest.test_decide_over_http_is_always_human) ... ok
+test_dispatch_unknown_executor_refused (tests.test_api.ApiUnitTest.test_dispatch_unknown_executor_refused) ... ok
+test_evidence_endpoint_unknown_job (tests.test_api.ApiUnitTest.test_evidence_endpoint_unknown_job) ... ok
+test_evidence_persisted_in_events_and_served (tests.test_api.ApiUnitTest.test_evidence_persisted_in_events_and_served)
+Evidence is durable: it is written into the completion event and ... ok
+test_full_happy_path (tests.test_api.ApiUnitTest.test_full_happy_path) ... ok
+test_invalid_json_body_rejected (tests.test_api.ApiUnitTest.test_invalid_json_body_rejected) ... ok
+test_status (tests.test_api.ApiUnitTest.test_status) ... ok
+test_unknown_route (tests.test_api.ApiUnitTest.test_unknown_route) ... ok
+test_serve_refuses_without_token (tests.test_api.AuthUnitTest.test_serve_refuses_without_token) ... ok
+test_wrong_token_rejected (tests.test_api.AuthUnitTest.test_wrong_token_rejected) ... ok
+test_ui_served_without_auth_header_but_api_protected (tests.test_api.UiServingTest.test_ui_served_without_auth_header_but_api_protected) ... ok
+test_parser_exposes_all_documented_flags (tests.test_cli.CliGateTest.test_parser_exposes_all_documented_flags) ... ok
+test_serve_refuses_without_token (tests.test_cli.CliGateTest.test_serve_refuses_without_token)
+fail-closed: no --token, no AGENT_OS_TOKEN, no --insecure => exit 2. ... ok
+test_subprocess_gate_requires_source_workspace (tests.test_cli.CliGateTest.test_subprocess_gate_requires_source_workspace)
+--enable-subprocess without --source-workspace fails closed (exit 2) ... ok
+test_a1_restart_preserves_all_state (tests.test_control_service.ControlServiceTest.test_a1_restart_preserves_all_state)
+Restarting the service preserves mission state, approval ... ok
+test_a2_expired_approval_refused_before_dispatch (tests.test_control_service.ControlServiceTest.test_a2_expired_approval_refused_before_dispatch)
+A stale/expired approval is refused before the executor runs. ... ok
+test_a2_manifest_change_after_grant_requires_new_decision (tests.test_control_service.ControlServiceTest.test_a2_manifest_change_after_grant_requires_new_decision)
+Editing the job after the grant invalidates it: changed package/ ... ok
+test_a2_unapproved_destination_refused_before_dispatch (tests.test_control_service.ControlServiceTest.test_a2_unapproved_destination_refused_before_dispatch)
+A dispatch to a destination the human never approved is refused ... ok
+test_a3_no_self_approval_planner_or_worker (tests.test_control_service.ControlServiceTest.test_a3_no_self_approval_planner_or_worker)
+A planner or worker principal cannot approve anything; approval ... ok
+test_a3_tool_inventory_cannot_be_enlarged (tests.test_control_service.ControlServiceTest.test_a3_tool_inventory_cannot_be_enlarged)
+A proposal asking for tools outside the adapter's fixed inventory ... ok
+test_a4_missing_test_report_is_not_verified_completion (tests.test_control_service.ControlServiceTest.test_a4_missing_test_report_is_not_verified_completion)
+A worker claiming completion without a test report cannot be ... ok
+test_a5_worker_loss_stays_interrupted_unknown (tests.test_control_service.ControlServiceTest.test_a5_worker_loss_stays_interrupted_unknown)
+A disconnected worker becomes interrupted/unknown: not successful, ... ok
+test_a6_duplicate_dispatch_and_event_replay_no_duplicate_action (tests.test_control_service.ControlServiceTest.test_a6_duplicate_dispatch_and_event_replay_no_duplicate_action)
+Replayed UI events do not duplicate actions; a repeated dispatch ... ok
+test_a7_stale_knowledge_revision_conflicts (tests.test_control_service.ControlServiceTest.test_a7_stale_knowledge_revision_conflicts)
+A canonical knowledge edit against a stale revision raises a conflict. ... ok
+test_v1_database_migrates_to_v2 (tests.test_subprocess_executor.MigrationTest.test_v1_database_migrates_to_v2)
+A DB created under v1 schema gains the `command` column on open. ... ok
+test_command_in_manifest_hash (tests.test_subprocess_executor.SubprocessExecutorTest.test_command_in_manifest_hash)
+Changing the command changes the manifest hash => invalidates a grant. ... ok
+test_failing_command_is_unverified_even_with_exit_nonzero (tests.test_subprocess_executor.SubprocessExecutorTest.test_failing_command_is_unverified_even_with_exit_nonzero) ... ok
+test_no_command_fails_closed_unverified (tests.test_subprocess_executor.SubprocessExecutorTest.test_no_command_fails_closed_unverified)
+Without a command, the executor must not guess: result is unverified. ... ok
+test_original_workspace_not_modified (tests.test_subprocess_executor.SubprocessExecutorTest.test_original_workspace_not_modified)
+The source workspace must never be touched by the executor. ... ok
+test_successful_command_produces_verified_evidence (tests.test_subprocess_executor.SubprocessExecutorTest.test_successful_command_produces_verified_evidence) ... ok
+test_timeout_is_honest_not_success (tests.test_subprocess_executor.SubprocessExecutorTest.test_timeout_is_honest_not_success) ... ok
+
+----------------------------------------------------------------------
+Ran 32 tests in 2.397s
+
+OK
+
+ran=32 failures=0 errors=0 skipped=0 ok=True

@@ -1,0 +1,121 @@
+AGENT OS — PHASE 0 TECHNICAL CHECK
+Date: 2026-09-21
+Local observation timestamp: 23:36:31 +03:30
+Scope: installation indicators and official-document checks; no implementation.
+Raw local evidence: agent-os-phase0-local-evidence.jsonl
+
+RESULT
+Docker/WSL2 is an existing candidate for a Linux-compatible first mission; no installation is needed merely to establish its presence. Operational readiness and security containment remain UNVERIFIED. Recommend a Python control service, subject to user approval. The repository and mission remain unselected.
+
+1. LOCAL OBSERVATIONS — NOT EXECUTION TESTS
+
+Docker Desktop
+- Registered product version: 4.92.0, under HKCU.
+- CLI located through PATH:
+  C:\Users\Mehdi\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe
+- A docker-desktop distribution is registered with WSL Version=2.
+- com.docker.service is not registered. This is consistent with the per-user installation mode described in official Docker documentation; it is NOT evidence of a broken installation.
+- Engine availability, selected backend/context, local images and container behavior were not queried. The CLI was not invoked.
+
+WSL2
+- Registered Windows Subsystem for Linux product version: 2.7.13.0.
+- Registered distributions: Ubuntu-26.04 (Version=2), docker-desktop (Version=2).
+- WslService, vmcompute and hns were already running at observation time. None was started, restarted or stopped by this assessment.
+- Distribution registration does not establish bootability, current running state, current kernel version or secure configuration.
+
+Other VM facilities
+- Hyper-V management service vmms and the checked vmconnect.exe location were absent; vmcompute exists. Do not interpret this as absence of all Microsoft virtualization support.
+- No VMware, VirtualBox or QEMU product registrations/PATH binaries were returned by the targeted checks; the checked standard VMware/VirtualBox executable locations were absent.
+- These are bounded negative findings, not an exhaustive machine search. Portable installations, VM images, optional-feature state and usable guest environments were not established.
+
+Windows metadata
+- Build: 28000.2956; DisplayVersion: 26H1; EditionID: Professional.
+- Registry ProductName literally returned Windows 10 Pro. The mixed labels were not used to infer the actual marketed Windows release or servicing support.
+- Hardware prerequisites, enabled optional features, service startup requirements and Docker support for this exact OS configuration remain unverified.
+
+Method and limits
+- Evidence was collected using PATH lookup, exact-path existence checks, selected installation/WSL registry fields and query-only Windows service APIs.
+- Initial native shell checks produced no usable output; their exit codes were not counted as evidence. Registry/service observations above are the usable evidence.
+- No Docker/WSL/VM/agent command was invoked. No guest was entered. No Docker configuration, runtime configuration, credentials or old DSH session file was read.
+- No hardware stress, network-denial, filesystem escape, startup or recovery test was performed.
+
+2. OFFICIAL-DOCUMENT FINDINGS
+
+Docker/WSL [S1, S2, S3]
+- Docker documents a minimum WSL version of 2.1.5. Registered WSL 2.7.13.0 exceeds that numeric floor, but this alone does not certify the installed combination.
+- Docker documents per-user installation under %LOCALAPPDATA%\Programs\DockerDesktop, with no privileged system service. The observed installation matches these indicators.
+- WSL defaults favor interoperability: Windows drive automount and Windows-process interop are enabled by default. Disabling automount alone does not prevent manual mounting.
+- A separate WSL distribution is not the required workload boundary. Docker also notes the shared WSL kernel and points to stronger backend/isolation options for stricter requirements. None was enabled or assumed available here.
+
+Hermes [S4]
+- Retrieved API documentation at the handoff's recorded upstream commit b851bd1a, HTTP 200 with no URL change.
+- It documents API_SERVER_ENABLED and gateway.api_server.enabled, mandatory API_SERVER_KEY authentication even on loopback, and full agent tool access including terminal commands.
+- This substantiates the documented interface at the recorded source revision, NOT operation of the installed Windows deployment. The actual config location/home resolution and local source identity were not inspected in Phase 0.
+- The handoff's phrase 'enable API_SERVER' is shorthand, not a verified configuration instruction. Do not edit a guessed flag or home path later.
+- Source bytes: 42444; SHA-256:
+  c0535574d7d7085ca138c66e3b955237110869a7a559d4c8c2e82965ada64868
+
+DSH Python SDK [S5, S6, S8]
+- Current official tutorial documents Python >=3.10 and Windows x64 support.
+- The SDK installs an exact same-version deepseek-harness-runtime-bin wheel and normally launches that bundled dsh through newline-delimited JSON-RPC over stdio. Ordinary SDK operation does not require system Node.js.
+- Current reference documents a dsh_bin override, explicit Harness home and event notifications. These do NOT prove that installed DSH 0.1.5-rc.2 has the required profile/plugins/protocol.
+- An exact-tag documentation lookup for v0.1.5-rc.2 returned 404. This is a missing document lookup, not proof that the release or SDK does not exist. Exact installed-version compatibility remains UNVERIFIED.
+- Any SDK install could introduce another runtime and requires explicit approval and version pinning; it is not an innocent wrapper installation.
+- sdk-minimal explicitly grants danger-full-access. DSH's safety document says the software is experimental, unaudited and must not be the sole security control.
+
+DSH ACP [S7]
+- The published package page shows 0.0.1-rc.1 and documents fresh sessions, committed text only, no live tool progress or resume, and rejection of nonempty additionalDirectories/mcpServers.
+- These limitations come from the package documentation, not compressed logs. The adapter package version is not the installed CLI version.
+- No richer progress UI or resume guarantee should be promised from ACP alone.
+
+Antigravity
+- Deferred by user decision. No installation, launch or new integration validation attempted. Its potential SDK is not necessary to justify the control-service language recommendation.
+
+3. RECOMMENDATIONS — NOT APPROVED IMPLEMENTATION
+
+Item 1: host/control and executor environment
+- Keep the trusted control service on native Windows initially; use the existing Docker/WSL2 installation as the first candidate for a disposable Linux worker, only if the chosen repository/test is Linux-compatible.
+- Windows-installed Hermes/DSH binaries do not automatically exist inside a Linux container. Container runtime provisioning and version verification require later, separate approval.
+- If the mission requires native Windows behavior, reconsider a disposable Windows VM instead of treating a worktree or ordinary WSL distribution as a fallback security boundary.
+
+Item 3: isolation
+- Current conclusion: PRESENT CANDIDATE, NOT VERIFIED CONTAINMENT.
+- Before real work, require approved tests of host-file and credential isolation, network denial and cleanup/interruption behavior. Do not infer these from registration, container existence or exit code zero.
+- Proposed worker restrictions: only the disposable mission copy; no host home, credential directories, control database or Docker/management socket; no privileged mode or broad host mounts; restricted user/capabilities.
+- Begin enforcement tests with a fake adapter and no network. Real model access subsequently needs a separately approved, constrained route that cannot bypass scoped egress approval.
+- Plain WSL, a working directory, an approval prompt and shell policy are not sufficient boundaries. Docker is also not an absolute defense against kernel/hypervisor compromise; workload trust and required isolation strength still matter.
+
+Item 5: control-service stack
+- Recommend Python 3.13 + SQLite for the first small service, initially tested with standard-library tooling and a fake adapter. Defer a web framework and dashboard package installation; Next.js can remain the later UI candidate.
+- Reasons: SQLite/process/control logic fit a small Python service; the documented DSH SDK has a direct Python interface with event notifications; no TypeScript-to-Python bridge is needed if that SDK proves suitable.
+- Trade-offs: a later TypeScript UI creates a two-language system; boundary schemas need explicit validation/versioning; process lifecycle/cancellation still requires careful Windows testing; SDK installation/version compatibility is not yet established.
+- An all-TypeScript service simplifies shared UI types and process/event handling. It does not solve ACP telemetry/resume limitations; adopting the Python SDK later would add a bridge.
+- This recommends a language, not an SDK install, framework commitment or authorization to launch workers. Python 3.13 for the control service does not change Hermes' own Python environment.
+
+4. REMAINING HANDOFF INCONSISTENCIES — FILE LEFT UNCHANGED
+- Section 4, line 92 still asserts '504 is a provider/endpoint-side error' after acknowledging unknown cause. Retain unknown cause and unreconciled job status.
+- Section 8 says Phase 0 has no network/no changes, while the user's newer instruction allows official documentation and project-local technical outputs. The newer explicit scope was followed: no project content was included in external queries.
+- Section 8 says no technical decision can precede repository selection; the user explicitly authorizes presence checks and a provisional stack recommendation before that selection.
+- Phase 1 lists API activation before Phase 2 enforcement tests, despite the governing principle that activation is last. Separate permission approval from activation: implement/test deny paths first, activate only afterward under a distinct grant.
+
+5. APPROVED DECISIONS AND NEXT GATE
+- Approved: job-scoped expiring approvals; Antigravity deferred from the first slice.
+- Recommended, awaiting confirmation: Python control service and conditional Docker/WSL2 worker candidate.
+- Needed from the user: repository path, failing test/bug, acceptance criteria, and whether the test requires Windows.
+- Next implementation after approval: durable mission/job/approval state with a fake executor, testing expired-approval rejection, unapproved-destination rejection, restart recovery and interruption->unknown. Do not activate Hermes/DSH first.
+- Runtime activation, credentials, installations, external model calls and 504 diagnostics remain separately gated. There is no automatic re-run of the old job.
+
+BOUNDARY AUDIT
+No packages installed/upgraded; no runtime/configuration/credential changes; no agent, Docker, WSL or VM launches; no project data sent to an external model/runtime. External requests were limited to public product/version searches and official documentation/source URLs; nonofficial search hits were not used. Project-local technical results and project memory are the only intended file changes. The excluded export/archive were not read. No application code was created.
+
+SOURCES — consulted 2026-09-21
+[S1] https://docs.docker.com/desktop/setup/install/windows-install/
+[S2] https://docs.docker.com/desktop/features/wsl/
+[S3] https://learn.microsoft.com/en-us/windows/wsl/wsl-config
+[S4] https://raw.githubusercontent.com/NousResearch/hermes-agent/b851bd1a/website/docs/user-guide/features/api-server.md
+     Live reference: https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server
+[S5] https://deepseek-harness.github.io/deepseek-harness/guide/python-sdk
+[S6] https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/python/sdk/README.md
+     Exact-tag lookup returned 404: https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/v0.1.5-rc.2/python/sdk/README.md
+[S7] https://www.npmjs.com/package/@deepseek-ai/dsh-acp
+[S8] https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/SAFETY.md

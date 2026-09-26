@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / runtime artifacts
+.testtmp/
+.test-results.txt
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local secrets — never commit
+.agent-os.token
+.env
+
+# Windows NTFS zone marker leftovers (never project content)
+*:Zone.Identifier
+
+# NOTE: Agent-OS-Premium is a PRIVATE repository. The unreleased master plan
+# (agent-os-*-master-*.md, agent-os-private-development-*.md) and the design
+# references under UI-Image/ are intentionally tracked here. The ignore rules
+# that protected them before this repo existed were removed deliberately.

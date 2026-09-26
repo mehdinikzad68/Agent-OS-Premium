@@ -1,0 +1,220 @@
+AGENT OS / MISSION CONTROL — ARCHITECTURE DECISION BRIEF
+21 September 2026 | Architecture proposal, not an implementation
+
+1. RECOVERED STATE AND CONFIRMED CONSTRAINTS
+
+The previous session left a diagram and two memory notes under 2026-09-21-19-22-02. It did not implement an application. The Claw directory is empty; there is no package manifest, build system, application source, or test suite to continue. The root .txt handoff is a session export, not a finished specification. All original files have been preserved.
+
+In this continuation you selected architecture first, confirmed that Hermes, DeepSeek Harness (DSH), and Antigravity are installed, and required approval before project content is sent to external AI providers. Installation is user-confirmed; executable paths, versions, local interfaces, and compatibility have not been inspected or verified. No agents were launched, configurations changed, integrations activated, dependencies installed, or project files submitted to those agents. Public documentation was consulted.
+
+Recommendation in one sentence: build a small local control plane around your agents, not a second autonomous agent that owns its own authority.
+
+Hermes should be the reasoning authority for proposals. Deterministic application code should be the execution authority for permissions, state transitions, dispatch and recovery. This distinction preserves your intended role for Hermes while making its decisions inspectable, replaceable and enforceable.
+
+2. ORCHESTRATION: WHAT ACTUALLY SENDS THE INSTRUCTION?
+
+The normal path should be:
+User mission -> persisted request -> permitted context preparation -> approved provider call -> Hermes proposal -> schema/policy validation -> any required human approval -> persisted job -> runtime adapter -> executor -> evidence -> verification -> final status.
+
+The dashboard calls your control service, not all agents directly. That service is the client of each runtime. Hermes does not hold a generic shell or an unrestricted ability to launch DSH or install plugins. It submits structured job proposals. Authorization happens outside the model.
+
+Option A — Direct HTTP/subprocess glue
+Suitable for a short compatibility experiment: call Hermes, then run an executor. Cheap to understand and requires little infrastructure. On its own it does not provide durable jobs, cancellation ownership, recovery, replayable logs or a reliable permission boundary. Do not mistake transport for orchestration.
+
+Option B — Small deterministic state machine with durable local jobs [recommended]
+A local service owns transitions and dispatches adapters. Use SQLite for missions, attempts, approvals, events and capability records, with transactions for state changes plus queued-dispatch records. Start with one worker and one active code-editing job per project. This is enough structure for a personal system without introducing a distributed platform.
+
+The price is responsibility: you must implement timeouts, bounded retries, stale-worker detection, duplicate suppression and recovery deliberately. Keep the state machine narrow rather than inventing a general workflow language.
+
+For the first implementation, Next.js plus a small Python control service is a reasonable candidate because both DSH and Antigravity document Python SDK surfaces. An all-TypeScript control service with Python adapters as subprocesses is equally defensible if avoiding two application languages matters more. The architecture depends on the adapter contract, not FastAPI versus Node. Neither stack has been selected or installed.
+
+Option C — LangGraph
+Useful when your own planning workflow develops branching, review loops and checkpointed state. It offers checkpointers and human-interrupt semantics [8]. It does not automatically make third-party CLI sessions recoverable or enforce their nested tools. Keep runtime adapters even if LangGraph is introduced. On interrupt/resume a node can execute again from its beginning: side effects around it must be designed accordingly.
+
+Option D — Temporal
+A stronger fit when long-lived jobs, multiple machines, worker failures and durable retries dominate [9]. It adds operational concepts and infrastructure that a one-user local system may not need yet. Its activities can execute more than once; application-level idempotency and reconciliation remain necessary.
+
+A multi-agent conversation framework is not automatically an improvement here: you already have agent runtimes. Adding another planner/delegation framework can duplicate responsibility without solving persistence or permissions.
+
+Decision questions:
+- Must a mission survive a restart, or is rerunning from an explicit checkpoint acceptable?
+- Do you need token-level output, tool-level progress, or only final results?
+- Are the complex branches in your application workflow or inside an existing agent?
+- Will jobs stay on one machine for now?
+
+3. DOCUMENTED INTEGRATION REALITY — NOT YET LOCAL COMPATIBILITY
+
+Hermes [1, 2]
+The official HTTP API documents OpenAI-compatible chat/responses and run/session surfaces. The default loopback bind does not remove the need for authentication. Critically, the API retains the agent's toolset, including terminal capabilities. A system message saying 'do not code' does not make it planner-only.
+
+Use a dedicated planner configuration/profile with an explicit minimal tool allowlist and verify the effective API-platform tool inventory. Do not assume a CLI setting necessarily overrides the gateway/API platform, or assume an undocumented per-request tools parameter disables native execution. Exclude terminal, file writes, code execution, unrestricted delegation, installation, scheduler and configuration modification. Disable lazy dependency installation. Prefer injecting bounded read-only context through your service over unrestricted repository access. Test denied capabilities before accepting this adapter.
+
+DSH [3, 4, 5]
+Official documentation offers both a Python SDK and an ACP transport. The current ACP package has important limits: fresh sessions only; committed assistant messages rather than live tool telemetry; no advertised session resume; non-empty mcpServers and additionalDirectories are rejected. Its completion stop reason is not evidence that your acceptance tests passed.
+
+Therefore ACP is reasonable for an early text-in/text-out adapter, but cannot by itself fulfill a promise of detailed live action logs and resumable executor sessions. Prefer investigating the SDK/native event surface when those capabilities are required. Missing event data must be shown as unavailable, not synthesized. Store your own attempts, artifacts and outcomes even when the runtime also stores conversations.
+
+Important safety trap: the Python quickstart's sdk-minimal profile is explicitly danger-full-access, with a persistent platform shell and no path containment merely from cwd. Do not copy that quickstart onto your working repository as the approved secure configuration. The project labels itself experimental developer-preview and not security-audited. Use a separately validated restrictive profile and externally enforced isolation; do not rely on DSH as the only security control.
+
+Antigravity [6, 7]
+The documentation distinguishes desktop/IDE, CLI, local Python SDK, and managed cloud API. 'Installed Antigravity' does not tell us which programmable interface exists locally. A managed cloud service is not an API for remotely controlling the installed desktop.
+
+For dynamic approval within Mission Control, the local Python SDK is the promising candidate: it documents declarative policies and an ask_user callback that could wait for a control-service decision. This must be tested against the installed version, including inherited subagent behavior and timeout/cancellation semantics. Local runtime does not mean local model or no external data transfer.
+
+The headless CLI documents agy -p and structured stream-json output. It is useful for jobs with narrowly preapproved permissions. Approval requests that cannot be satisfied may be soft-denied while the process still exits zero. Even a SUCCESS response is not proof that requested work or tests succeeded. Inspect structured status, denied operations and actual evidence. Do not disable all permissions to make headless mode appear reliable.
+
+If only the IDE surface is available, start with an explicit manual handoff rather than pretending a stable automation interface exists. Avoid fragile UI automation as the backbone of the architecture.
+
+Protocols [10]
+ACP standardizes client-agent sessions and messages; it is not a distributed scheduler or a general guarantee of agent-to-agent interoperability. The control service acts as an ACP client where appropriate and negotiates actual capabilities.
+MCP is a tool/resource interface, not a queue, authorization engine or sandbox. A tool supporting MCP does not imply it exposes agent-session control.
+WebSocket transports UI traffic; it does not persist events. For a personal dashboard, HTTP commands plus SSE for server-to-browser events may be simpler. Keep WebSocket if genuine bidirectional streaming is needed. In either case, persist event sequence IDs and support reconnect/replay. Do not put long-running agent processes inside transient frontend request handlers.
+
+4. SHARED MEMORY: THREE DIFFERENT THINGS, NOT ONE VECTOR STORE
+
+Operational truth -> SQLite
+Store project/mission/job identity, state, attempt numbers, ownership, approvals, event ordering, runtime versions and artifact references. Only the control service changes authoritative job state. Agents can propose updates; they should not directly mark their own jobs completed in the database.
+
+Durable knowledge -> Obsidian-compatible Markdown
+Store requirements, accepted decisions, conventions and reviewed summaries. Markdown is human-readable and portable, but it is not a concurrent transaction database. Preserve Obsidian as a usable human workspace, not a raw dump of every agent turn.
+
+Execution evidence -> versioned artifacts
+Store diffs, test output, reports and context manifests with project/job identity, provenance and content hashes. Keep large or sensitive logs out of prompt context and redact secrets before display/storage where possible. Hashing does not make confidential content safe to share.
+
+Each executor receives an immutable context snapshot: a versioned manifest of selected requirements, decisions, file versions and permitted artifacts. Sharing a repository does not guarantee that two agents saw the same context. Different models also have independent hidden state and compaction; shared memory cannot make that identical.
+
+Writes should be proposed as changes with a base revision. A memory service validates ownership, provenance and conflicts, then accepts or requests review. Serialize canonical writes initially. A human edit in Obsidian must trigger revision/conflict handling rather than being silently overwritten. Do not mount one live vault read-write into every worker. Treat retrieved notes and external content as data, not executable instructions.
+
+Vector search is an optional derived index, not a source of truth. It helps when relevant knowledge cannot be found through project filters and keyword/full-text search. Costs include embedding computation, approximate retrieval, deletion/version synchronization and possible data egress. Begin with metadata plus full-text search; index only permitted, versioned content later. A cloud embedding call also needs the user's data approval.
+
+Trade-offs:
+- Files only: transparent but weak concurrency, constraints and job queries.
+- SQLite only: reliable operational state but less pleasant for human-authored knowledge.
+- Vector store first: semantic retrieval but no replacement for canonical facts or workflow state.
+- Hybrid: clearer ownership with a modest synchronization burden [recommended].
+
+Decision questions:
+- Which facts are canonical and who may approve changes to them?
+- Will you edit the vault while agents run?
+- Is your pain finding relevant notes or reconstructing what a run actually used?
+- Can a job's context remain frozen until completion, with new information causing an explicit revision?
+
+5. HERMES'S RESPONSIBILITY BOUNDARY
+
+Hermes owns intent interpretation, decomposition, dependency suggestions, executor selection, proposed acceptance criteria, reviewing evidence and proposing replans. It may name relevant files, interfaces and tests as instructions. That is planning, not direct code execution.
+
+The control service owns schema validation, permission checks, approved scope, job state, worker identity, event persistence, timeouts, retry limits and recovery. It alone turns an approved proposal into an executable job.
+
+DSH owns code changes and test execution within the authorized workspace. Antigravity should have a distinct justified role: for example an alternative executor, a specialist investigation, or an independent review. Do not send every mission to both or allow simultaneous edits to the same checkout. Independence is reduced if the same model/context assumptions are reused; a second agent alone is not proof of correctness.
+
+Verification uses artifacts plus acceptance checks. Hermes can assess the report, but cannot waive missing tests or authorize a forbidden action. The user retains approval over scope expansion, new capabilities, data egress, and externally consequential actions.
+
+Suggested job proposal fields:
+mission_id, task_id, executor, objective, dependencies, context_snapshot_id, workspace_scope, allowed_tools/actions, data_policy, expected_artifacts, acceptance_checks, timeout, retry_limit, budget_limit.
+
+These are application contract fields, not claimed native parameters of Hermes/DSH/ACP. Adapters translate the validated contract into supported runtime requests. Unsupported permission or observability requirements must fail closed or trigger an explicit downgrade decision.
+
+Enforce 'Hermes does not code' through both capability removal and external permissions. A denylist of a few tool names is not enough if other plugins, nested agents or a generic shell can reach the same capability. The planner cannot edit its own policy, activate skills or call an unrestricted executor-launch tool. No model may self-approve.
+
+Decision question: may Hermes draft implementation suggestions, or do you also want to forbid code snippets in its output? My default interpretation is 'no direct code changes or execution'; the executor still receives sufficiently detailed technical instructions.
+
+6. APPROVAL AND ACTIVATION: AN AUTHORIZED CAPABILITY, NOT A BUTTON
+
+Separate four grants: discovery/review, installation, activation for a project, and execution of a specific sensitive action. Approval of installation is not perpetual permission to run anything that package requests.
+
+Suggested lifecycle:
+Proposed -> provenance/security review -> approved manifest -> staged installation -> isolated validation -> project activation -> monitored use -> revoked/disabled.
+
+A proposal should identify exact package/source and pinned version or content hash, requested files/network/commands, reason, model/provider, credential references, expected cost constraints and whether installation scripts execute. A Markdown skill can alter agent behavior or include executable scripts; review all bundled files, not just its description. Existing installation is not equivalent to trusted activation.
+
+The approval record binds a human decision to an exact manifest/request hash, project, permitted scope, expiry and policy version. Before dispatch or a sensitive callback, compare current parameters with that record. Changed package contents, a broader path, another provider or expanded actions require another decision. Reject expired or stale grants. Maintain an audit event for allow, deny, cancellation and revocation.
+
+Use a separate controlled installer rather than giving Hermes package-manager access. Stage untrusted code without production secrets and account for dependency install hooks and dynamic loading. Activation records a permitted capability; it does not silently rewrite every agent profile. Restrict credentials to the specific worker/provider, never put raw credentials in Obsidian or transcript artifacts.
+
+The user's chosen egress policy needs special care: the first Hermes planning call may already send the prompt externally. Authorization must happen before that call, not only before DSH writes code. File reads, nested tool calls, browser requests, embeddings, plugins and telemetry can send more data later. A gateway label alone does not enforce this when a worker can make arbitrary network connections.
+
+Enforcement therefore needs restricted worker networking/filesystem/credentials as well as application policy. A job-scoped grant can reduce repetitive prompts, but it must describe which project content, provider/destination, actions and duration are allowed. For dynamic file reading, either stage a fixed permitted snapshot or gate newly accessed/transmitted content. Revocation stops further dispatch and requests cancellation; it cannot retract data already sent or undo an external action.
+
+A working directory, Git worktree, WSL distribution or ordinary shell policy is not a sufficient isolation boundary by itself. Choose the actual container/VM/OS controls after checking your environment. Avoid broad home-directory mounts, host Docker sockets and inherited credentials. Executing project tests also executes project code and deserves the same boundary.
+
+7. MINIMUM USEFUL PERSONAL SYSTEM — A VERTICAL SLICE, NOT A TIMELINE
+
+Suggested first real mission, pending your choice:
+'Fix one reproducible failing test in a disposable copy of a selected repository and return a reviewable patch plus test evidence; do not merge or publish.'
+
+The valuable end-to-end behavior is: record a mission, display Hermes's proposed plan and required permissions, approve scoped data/execution access, run one DSH job, show truthful progress, verify the patch/tests, record a reviewed knowledge update, and recover honestly from interruption.
+
+Use a mission list and detail view, approval inbox, ordered event feed, artifact/diff/test view and a capability/status panel. Kanban is a projection of mission state, not a separate authority. Conversation history belongs to a project/mission, with basic search; a large chat product is not a prerequisite for this slice.
+
+Antigravity can be represented as installed-but-not-integrated until a distinct role and usable interface are confirmed. Do not fake an online badge. Do not block the first useful DSH mission on integrating every tool.
+
+Initial exclusions: autonomous marketplace installation, Omi ingestion, semantic/vector search, fleet management, multi-tenancy, multi-agent concurrent writes, Kubernetes and mandatory use of a workflow engine. These are deferrals, not claims that the capabilities are unnecessary forever.
+
+Candidate acceptance checks for the foundation:
+- Restarting the service preserves mission state, approval decisions and event history.
+- A stale approval or new unapproved destination is refused before dispatch.
+- A planner cannot modify files, invoke code execution or enlarge its tool inventory.
+- A missing test report or denied operation cannot be displayed as verified completion.
+- A disconnected worker becomes interrupted/unknown until reconciled, not silently 'successful' or automatically rerun.
+- Replayed UI events do not duplicate displayed actions; repeated requests reuse or reject the same idempotency key.
+- A canonical knowledge edit against a stale revision raises a conflict.
+
+Reliability caveat: a worker can finish an external action and crash before reporting it. Retrying may duplicate the action. Persist intent before dispatch, use supported idempotency keys, and reconcile unknown outcomes. Do not promise exactly-once external effects or universal rollback. A local patch can be reviewed/reverted; a sent message, leaked file or published deployment has different recovery properties.
+
+Measure verified completion rate, rework, time waiting for approvals, recoverable interruptions and evidence coverage. These are proposed product metrics, not collected measurements. The differentiation hypothesis is trustworthy control and inspectable results, not the number of agent icons.
+
+8. WHAT IS STILL UNDECIDED
+
+Before selecting concrete adapters or starting implementation:
+1) Exact Hermes/DSH/Antigravity versions and executable/repository paths; Antigravity IDE versus CLI/SDK; Windows versus WSL/container placement.
+2) The first repository and real mission, with observable acceptance criteria.
+3) Which isolation facilities are actually available and how networking/credentials will be constrained.
+4) Whether Antigravity is an alternative coder, specialist or reviewer.
+5) Whether a scoped approval lasts one job or a project session. The default remains ask before external transfer.
+
+These do not prevent architecture discussion; they prevent unverified integration promises. The small control plane, explicit authority split and hybrid memory model remain recommendations, not final approved implementation choices.
+
+No fresh global/Iranian competitor study was completed in this continuation. Prior-session market references have not been treated as validated product evidence. Market fit, competitor feature gaps, regional availability and licensing/commercial suitability remain separate research and validation work.
+
+9. SOURCES — PUBLIC DOCUMENTATION CONSULTED 21 SEPTEMBER 2026
+
+Current documentation can change and does not prove installed-version compatibility.
+
+[1] Hermes API server
+https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server
+
+[2] Hermes toolsets and security
+https://hermes-agent.nousresearch.com/docs/reference/toolsets-reference
+https://hermes-agent.nousresearch.com/docs/user-guide/security
+
+[3] Official DSH ACP package: transport contract and explicit limitations
+https://www.npmjs.com/package/@deepseek-ai/dsh-acp
+
+[4] DSH Python SDK guide: profile, runtime, session and danger-full-access caveats
+https://deepseek-harness.github.io/deepseek-harness/guide/python-sdk
+
+[5] DSH safety statement
+https://raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/SAFETY.md
+
+[6] Antigravity Python SDK and tool policies
+https://antigravity.google/docs/sdk/overview
+https://antigravity.google/docs/sdk/policies
+
+[7] Antigravity CLI headless behavior
+https://antigravity.google/docs/cli/headless
+
+[8] LangGraph persistence and interrupts
+https://docs.langchain.com/oss/python/langgraph/persistence
+https://docs.langchain.com/oss/python/langgraph/interrupts
+
+[9] Temporal activity idempotency and retry semantics
+https://docs.temporal.io/activity-definition
+
+[10] Agent Client Protocol roles, capabilities and session lifecycle
+https://agentclientprotocol.com/protocol/v1/overview
+
+DELIVERABLES
+agent-os-architecture-decisions.txt — this decision brief.
+agent-os-decision-architecture.svg — proposed authority, adapter and memory boundaries.
+
+Application implementation, integration tests and runtime activation: not performed by design.

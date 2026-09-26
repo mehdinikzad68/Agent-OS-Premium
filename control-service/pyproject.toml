@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-os"
+version = "0.2.0"
+description = "Agent OS / Mission Control — a deterministic local control plane for personal agents"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Agent OS" }]
+keywords = ["agent", "mission-control", "orchestration", "approval", "audit"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
+# No runtime dependencies by design: the control plane uses only the
+# Python standard library so it can be audited and run with zero installs.
+dependencies = []
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+agent-os = "agent_os.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent_os*"]
+
+[tool.setuptools.package-data]
+"agent_os" = ["web/*.html", "web/*.css", "web/*.js"]

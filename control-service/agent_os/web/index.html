@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent OS — Mission Control</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #171e26; --panel2: #1d2630; --border: #2a3542;
+    --text: #e6edf3; --muted: #8b98a5; --accent: #4ea1ff; --ok: #2ea043;
+    --warn: #d29922; --bad: #f85149; --info: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, "Segoe UI", Tahoma, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  header .spacer { flex: 1; }
+  input, button, select, textarea {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
+  button.ok { background: var(--ok); color: #04120a; border-color: var(--ok); }
+  button.bad { background: var(--bad); color: #1c0605; border-color: var(--bad); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 14px; padding: 14px 16px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .card h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .list { display: flex; flex-direction: column; gap: 6px; }
+  .item { padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+  .item:hover { border-color: var(--accent); }
+  .item .t { font-weight: 600; }
+  .item .m { color: var(--muted); font-size: 12px; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .b-draft { background: #30363d; }
+  .b-active { background: #0d419d33; color: var(--accent); }
+  .b-proposed { background: #30363d; color: var(--muted); }
+  .b-awaiting_approval { background: #9e6a0333; color: var(--warn); }
+  .b-approved { background: #0d419d33; color: var(--accent); }
+  .b-running { background: #0d419d33; color: var(--accent); }
+  .b-dispatched { background: #0d419d33; color: var(--accent); }
+  .b-completed_verified { background: #2ea04333; color: var(--ok); }
+  .b-completed_unverified { background: #d2992233; color: var(--warn); }
+  .b-failed { background: #f8514933; color: var(--bad); }
+  .b-interrupted_unknown { background: #a371f733; color: var(--info); }
+  .b-closed { background: #30363d; }
+  .feed { max-height: 420px; overflow-y: auto; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .feed .row { padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  .feed .seq { color: var(--muted); }
+  .feed .kind { color: var(--accent); }
+  .feed .ts { color: var(--muted); float: left; }
+  pre.detail { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--panel2); padding: 10px; border-radius: 6px; }
+  .row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .muted { color: var(--muted); }
+  .pill { display:inline-block; padding: 2px 8px; border-radius: 10px; background: var(--panel2); border:1px solid var(--border); font-size: 12px; }
+  #toast { position: fixed; bottom: 16px; left: 16px; background: var(--panel); border:1px solid var(--border); padding: 10px 14px; border-radius: 8px; display:none; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td, th { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛰️ Agent OS — Mission Control</h1>
+  <span class="muted" id="conn">اتصال…</span>
+  <span class="spacer"></span>
+  <input id="token" type="password" placeholder="توکن دسترسی (Bearer)" style="width:220px">
+  <button id="btn-connect" class="primary">اتصال</button>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="card">
+      <h2>وضعیت سیستم</h2>
+      <div id="status" class="muted">—</div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>ثبت مأموریت جدید</h2>
+      <div class="row-inline">
+        <input id="new-mission" placeholder="عنوان مأموریت" style="flex:1">
+        <button id="btn-mission" class="primary">ایجاد</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>مأموریت‌ها</h2>
+      <div id="missions" class="list"></div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="card">
+      <h2>جزئیات مأموریت</h2>
+      <div id="mission-detail" class="muted">یک مأموریت را انتخاب کنید</div>
+      <div id="jobs" class="list" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card" id="job-card" style="margin-top:12px; display:none">
+      <h2>جزئیات کار + شواهد</h2>
+      <div id="job-detail" class="muted">—</div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>صندوق تأییدها</h2>
+      <div id="approvals" class="list"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>رویدادها (event feed)</h2>
+      <div id="feed" class="feed">—</div>
+    </div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let TOKEN = localStorage.getItem("agent_os_token") || "";
+let selectedMission = null;
+let selectedJob = null;
+
+$("token").value = TOKEN;
+
+async function api(method, path, body) {
+  const headers = {};
+  if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const resp = await fetch(path, {
+    method, headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const msg = (data.error && data.error.message) || ("HTTP " + resp.status);
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg; t.style.display = "block";
+  clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = "none"), 3000);
+}
+
+function badge(state) {
+  return `<span class="badge b-${state}">${state}</span>`;
+}
+
+function escapeHtml(s) {
+  return String(s === undefined || s === null ? "" : s)
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+async function connect() {
+  TOKEN = $("token").value.trim();
+  localStorage.setItem("agent_os_token", TOKEN);
+  try {
+    await api("GET", "/api/status");
+    $("conn").textContent = "متصل ✅"; $("conn").style.color = "var(--ok)";
+  } catch (e) {
+    $("conn").textContent = "خطا: " + e.message; $("conn").style.color = "var(--bad)";
+    throw e;
+  }
+}
+
+async function loadStatus() {
+  const s = await api("GET", "/api/status");
+  $("status").innerHTML = `
+    <div><b>نسخه:</b> ${s.version}</div>
+    <div><b>executorها:</b> ${(s.executors||[]).join(", ") || "هیچ"}</div>
+    <div><b>پایگاه داده:</b> <span class="muted">${s.db_path}</span></div>`;
+}
+
+async function loadMissions() {
+  const d = await api("GET", "/api/missions");
+  const el = $("missions");
+  el.innerHTML = "";
+  (d.missions || []).forEach((m) => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `<div class="t">${m.title}</div><div class="m">${badge(m.state)}</div>`;
+    div.onclick = () => { selectedMission = m; loadMissionDetail(m.id); };
+    el.appendChild(div);
+  });
+}
+
+async function loadMissionDetail(id) {
+  const m = await api("GET", "/api/missions/" + id);
+  $("mission-detail").innerHTML = `
+    <div class="row-inline"><b>${m.title}</b> ${badge(m.state)}
+      <span class="muted">${m.id}</span></div>
+    <div class="row-inline" style="margin-top:6px">
+      <button id="btn-activate" class="primary">فعال‌سازی</button>
+      <button id="btn-new-job">+ کار جدید</button>
+    </div>`;
+  $("btn-activate") && ($("btn-activate").onclick = () => activateMission(id));
+  $("btn-new-job") && ($("btn-new-job").onclick = () => newJobPrompt(id));
+  await loadJobs(id);
+}
+
+async function loadJobs(missionId) {
+  const d = await api("GET", "/api/jobs");
+  const jobs = (d.jobs || []).filter((j) => j.mission_id === missionId);
+  const el = $("jobs");
+  el.innerHTML = "";
+  jobs.forEach((j) => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `<div class="t">${j.title}</div>
+      <div class="m">${badge(j.state)} · ${j.executor} · تلاش ${j.attempt_no}</div>`;
+    div.onclick = () => showJob(j);
+    el.appendChild(div);
+  });
+}
+
+function showJob(j) {
+  selectedJob = j;
+  $("job-card").style.display = "block";
+  renderJobDetail(j.id).catch((e) => toast("خطا: " + e.message));
+}
+
+async function renderJobDetail(jobId) {
+  const j = await api("GET", "/api/jobs/" + jobId);
+  const actions = [];
+  if (j.state === "proposed") {
+    actions.push(`<button class="primary" onclick="requestApproval('${j.id}')">درخواست تأیید</button>`);
+  }
+  if (j.state === "approved") {
+    actions.push(`<button class="primary" onclick="dispatchJob('${j.id}')">اجرای کار (dispatch)</button>`);
+  }
+  if (j.state === "interrupted_unknown") {
+    actions.push(`<button class="bad" onclick="reconcileJob('${j.id}')">تسویه دستی (reconcile)</button>`);
+  }
+  if (j.state === "awaiting_approval") {
+    actions.push(`<span class="muted">در انتظار تصمیم انسان — در «صندوق تأییدها» تأیید یا رد کنید</span>`);
+  }
+
+  let evidenceHtml = "";
+  if (["completed_verified", "completed_unverified", "failed", "interrupted_unknown"].includes(j.state)) {
+    try {
+      const ev = await api("GET", `/api/jobs/${j.id}/evidence`);
+      if (ev.evidence) {
+        evidenceHtml = `
+          <h2 style="margin-top:12px">شواهد ثبت‌شده (event #${ev.event_seq})</h2>
+          <div class="muted">وضعیت گزارش: ${escapeHtml(ev.kind)}</div>
+          <h2 style="margin-top:8px">گزارش تست</h2>
+          <pre class="detail">${escapeHtml(ev.evidence.test_report) || "(بدون گزارش تست)"}</pre>
+          <h2 style="margin-top:8px">تفاوت / خروجی (diff)</h2>
+          <pre class="detail">${escapeHtml(ev.evidence.diff)}</pre>`;
+      } else {
+        evidenceHtml = `<div class="muted" style="margin-top:8px">${escapeHtml(ev.note || "شواهدی ثبت نشده")}</div>`;
+      }
+    } catch (e) {
+      evidenceHtml = `<div class="muted" style="margin-top:8px">دریافت شواهد ناموفق: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  $("job-detail").innerHTML = `
+    <div class="row-inline"><b>${escapeHtml(j.title)}</b> ${badge(j.state)}
+      <span class="muted">${escapeHtml(j.id)}</span></div>
+    <div class="muted" style="margin-top:6px">
+      executor: ${escapeHtml(j.executor)} · تلاش: ${j.attempt_no} ·
+      manifest: <code>${escapeHtml(String(j.manifest_hash).slice(0, 12))}…</code>
+    </div>
+    <div class="muted">دستور: ${escapeHtml(j.command) || "—"}</div>
+    <div class="muted">مسیرها: ${escapeHtml((j.workspace_paths || []).join(", "))} ·
+      ابزارها: ${escapeHtml((j.actions || []).join(", "))}</div>
+    <div class="row-inline" style="margin-top:10px">${actions.join("")}</div>
+    ${evidenceHtml}`;
+}
+
+async function requestApproval(jobId) {
+  try {
+    await api("POST", "/api/approvals", { job_id: jobId });
+    toast("درخواست تأیید ثبت شد"); refresh();
+  } catch (e) { toast("خطا: " + e.message); }
+}
+
+async function activateMission(id) {
+  try {
+    await api("POST", "/api/missions/" + id + "/activate");
+    toast("مأموریت فعال شد"); refresh();
+  } catch (e) { toast("خطا: " + e.message); }
+}
+
+async function dispatchJob(jobId) {
+  try {
+    const r = await api("POST", "/api/jobs/" + jobId + "/dispatch");
+    toast("نتیجه: " + r.receipt.final_state);
+    refresh();
+  } catch (e) { toast("خطا: " + e.message); }
+}
+
+async function reconcileJob(jobId) {
+  const state = prompt("وضعیت نهایی (failed / completed_verified / completed_unverified):", "failed");
+  if (!state) return;
+  try {
+    await api("POST", "/api/jobs/" + jobId + "/reconcile", { final_state: state, note: "تسویه دستی" });
+    toast("تسویه شد"); refresh();
+  } catch (e) { toast("خطا: " + e.message); }
+}
+
+function newJobPrompt(missionId) {
+  const title = prompt("عنوان کار:");
+  if (!title) return;
+  const executor = prompt("executor (پیش‌فرض fake-executor):", "fake-executor");
+  const actions = prompt("actions با کاما (پیش‌فرض read_file,run_tests):", "read_file,run_tests");
+  propose(missionId, title, executor, actions.split(",").map(s=>s.trim()));
+}
+
+async function propose(missionId, title, executor, actions) {
+  try {
+    const j = await api("POST", "/api/jobs", {
+      mission_id: missionId, title, executor,
+      workspace_paths: ["workspace/"], actions,
+      proposed_by: "planner",
+    });
+    // auto-request approval
+    const a = await api("POST", "/api/approvals", { job_id: j.id });
+    toast("کار ثبت شد و درخواست تأیید داده شد");
+    refresh();
+  } catch (e) { toast("خطا: " + e.message); }
+}
+
+async function loadApprovals() {
+  const d = await api("GET", "/api/approvals");
+  const el = $("approvals");
+  el.innerHTML = "";
+  const pending = (d.approvals || []).filter((a) => a.decision === "requested");
+  if (pending.length === 0) { el.innerHTML = '<div class="muted">هیچ تأیید معلقی نیست</div>'; return; }
+  pending.forEach((a) => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `<div class="t">تأیید برای کار <span class="muted">${a.job_id}</span></div>
+      <div class="m">scope: ${a.scope.executor} · ${(a.scope.actions||[]).join(", ")}</div>
+      <div class="row-inline" style="margin-top:6px">
+        <button class="ok" onclick="decide('${a.id}','granted')">تأیید</button>
+        <button class="bad" onclick="decide('${a.id}','denied')">رد</button>
+      </div>`;
+    el.appendChild(div);
+  });
+}
+
+async function decide(approvalId, decision) {
+  try {
+    await api("POST", "/api/approvals/" + approvalId + "/decide", { decision });
+    toast(decision === "granted" ? "تأیید شد" : "رد شد");
+    refresh();
+  } catch (e) { toast("خطا: " + e.message); }
+}
+
+async function loadFeed() {
+  const d = await api("GET", "/api/events");
+  const el = $("feed");
+  el.innerHTML = "";
+  (d.events || []).slice().reverse().forEach((e) => {
+    const div = document.createElement("div");
+    div.className = "row";
+    const ts = new Date(e.ts).toLocaleTimeString("fa-IR");
+    div.innerHTML = `<span class="ts">${ts}</span><span class="seq">#${e.seq}</span> <span class="kind">${e.kind}</span>`;
+    el.appendChild(div);
+  });
+  if (!el.children.length) el.innerHTML = '<div class="muted">بدون رویداد</div>';
+}
+
+async function refresh() {
+  try {
+    await Promise.all([loadStatus(), loadMissions(), loadApprovals(), loadFeed()]);
+    if (selectedMission) loadMissionDetail(selectedMission.id);
+    if (selectedJob) renderJobDetail(selectedJob.id).catch(() => {});
+  } catch (e) { /* auth or transient */ }
+}
+
+window.decide = decide;
+window.requestApproval = requestApproval;
+window.dispatchJob = dispatchJob;
+window.reconcileJob = reconcileJob;
+
+$("btn-connect").onclick = async () => { await connect(); refresh(); };
+$("btn-mission").onclick = async () => {
+  const title = $("new-mission").value.trim();
+  if (!title) return;
+  try { await api("POST", "/api/missions", { title }); $("new-mission").value = ""; toast("مأموریت ایجاد شد"); refresh(); }
+  catch (e) { toast("خطا: " + e.message); }
+};
+
+(async () => {
+  if (TOKEN) { try { await refresh(); } catch (e) {} }
+  else { $("conn").textContent = "توکن را وارد کنید"; }
+  setInterval(() => { if (TOKEN) refresh(); }, 4000);
+})();
+</script>
+</body>
+</html>

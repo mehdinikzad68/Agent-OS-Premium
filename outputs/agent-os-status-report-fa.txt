@@ -1,0 +1,222 @@
+گزارش وضعیت موجود — پروژه Agent OS / Mission Control
+تاریخ: ۲۱ سپتامبر ۲۰۲۶ | نوع سند: بازبینی read-only، بدون هیچ تغییر در کد یا تنظیمات
+
+════════════════════════════════════════════
+۱. خلاصهٔ یک‌پاراگرافی
+════════════════════════════════════════════
+
+پروژه در وضعیت «معماری‌شده اما پیاده‌سازی‌نشده» است. هیچ خط کدی، هیچ package.json، هیچ build system و هیچ تستی وجود ندارد. آنچه وجود دارد: یک سند تصمیم‌های معماری (۲۳KB)، دو دیاگرام SVG، و چند فایل memory. پوشهٔ Claw کاملاً خالی است. علاوه بر این، بررسی این سشن نشان داد که هر سه رانتایم (Hermes، DSH، Antigravity) واقعاً روی سیستم نصب هستند — اما هیچ‌کدام یکپارچه نشده‌اند، و در واقع یک تلاش قبلی DSH روی همین پروژه با خطای HTTP 504 شکست خورده است.
+
+════════════════════════════════════════════
+۲. موجودی کامل فولدر
+════════════════════════════════════════════
+
+D:\DEV-Studio\Programming\Agent-OS\
+│
+├── آخرین پاسخی که در سشن قبلی  مدل داد.txt       297,071 بایت
+│   └── اکسپورت JSON سشن قبلی (مدل GPT-6-Astra)، ۵ پیام، ۶۱ tool call
+│
+├── outputs/                                        ★ خروجی‌های اصلی
+│   ├── agent-os-architecture-decisions.txt        23,237 بایت — سند تصمیم‌های معماری
+│   └── agent-os-decision-architecture.svg          6,088 بایت — دیاگرام مرزهای اختیار
+│
+├── 2026-09-21-19-22-02/                            آرشیو سشن قبلی
+│   ├── outputs/agent-os-architecture.svg           4,611 بایت — نسخهٔ اولیهٔ دیاگرام
+│   └── .workbuddy-ai/memory/
+│       ├── MEMORY.md                               1,423 بایت
+│       └── 2026-09-21.md                           1,038 بایت
+│
+├── Claw/                                          ⚠️ کاملاً خالی (۰ فایل)
+│
+├── .workbuddy-ai/memory/
+│   ├── MEMORY.md                                   2,165 بایت — context پروژه
+│   └── 2026-09-21.md                                  13 بایت — فقط هدر، خالی از محتوا
+│
+└── (هیچ src/، package.json، requirements.txt، .git/، Dockerfile، یا tests/)
+
+نکته مهم: مسیر سشن قبلی C:/Users/Mehdi/WorkBuddy AI/2026-09-21-19-22-02 بوده است، نه این workspace. یعنی سشن قبلی یک workspace جدا داشته و فایل‌ها بعداً منتقل/کپی شده‌اند.
+
+════════════════════════════════════════════
+۳. سند اصلی: چه چیزی نوشته شده
+════════════════════════════════════════════
+
+فایل outputs/agent-os-architecture-decisions.txt یک «ARCHITECTURE DECISION BRIEF» کامل در ۹ بخش است:
+
+۱. وضعیت بازیابی‌شده و محدودیت‌های تأییدشده
+۲. ارکستراسیون: چه چیزی واقعاً دستور را می‌فرستد؟ (گزینه‌های A/B/C/D)
+۳. واقعیت یکپارچه‌سازی مستندشده (Hermes / DSH / Antigravity / پروتکل‌ها)
+۴. حافظهٔ مشترک: سه چیز متفاوت، نه یک vector store
+۵. مرز مسئولیت Hermes
+۶. تأیید و فعال‌سازی: یک capability مجاز، نه یک دکمه
+۷. حداقل سیستم شخصی مفید — یک vertical slice، نه یک timeline
+۸. چه چیزهایی هنوز تصمیم‌گیری نشده
+۹. منابع (۱۰ منبع رسمی)
+
+توصیهٔ مرکزی در یک جمله:
+«یک control plane کوچک محلی حول agentهایت بساز، نه یک agent خودمختار دوم که اختیارش را خودش در دست دارد.»
+
+تفکیک کلیدی: Hermes = مرجع استدلال برای پیشنهادها (proposals). کد application قطعی = مرجع اجرا برای مجوزها، انتقال state، dispatch و recovery.
+
+گزینهٔ توصیه‌شده برای ارکستراسیون: Option B — یک state machine کوچک قطعی با jobهای پایدار محلی (SQLite). گزینه‌های دیگر: A (HTTP/subprocess چسب ساده)، C (LangGraph)، D (Temporal) — هرکدام با trade-off صریح.
+
+استک کاندید (تأییدنشده): Next.js + یک سرویس کنترل کوچک Python، چون هم DSH و هم Antigravity سطح SDK پایتون مستند دارند. یا همه‌TypeScript با adapterهای پایتون به‌صورت subprocess. تأکید شده: معماری به contract adapter وابسته است، نه به FastAPI در برابر Node.
+
+════════════════════════════════════════════
+۴. دیاگرام‌ها
+════════════════════════════════════════════
+
+outputs/agent-os-decision-architecture.svg (نسخهٔ نهایی، ۶,۰۸۸ بایت، viewBox 0 0 680 720)
+یک دیاگرام مرزهای اختیار با ۷ بلوک:
+  • Mission Control: proposed authority boundaries (عنوان)
+  • Deterministic control service
+  • Versioned runtime adapters
+  • Hermes planner — Proposals, not execution
+  • DSH worker — Code + test evidence
+  • Antigravity worker — Explicit specialist role
+  • Memory service — SQLite / Obsidian / Artifacts
+
+2026-09-21-19-22-02/outputs/agent-os-architecture.svg (نسخهٔ اولیه، ۴,۶۱۱ بایت، viewBox 0 0 680 580)
+نسخهٔ قبلی همان دیاگرام از سشن قبلی — ۲۱ عنصر متنی. عملاً منسوخ شده.
+
+════════════════════════════════════════════
+۵. سشن قبلی دقیقاً چه کرد (و کجا قطع شد)
+════════════════════════════════════════════
+
+بازسازی از اکسپورت JSON:
+  • requestId: 5e3e66ec74b0407f8b0d6f5c8b21f0a6
+  • ۵ پیام، ۶۱ tool call
+  • فقط ۴ پاسخ متنی کوتاه تولید شد (۴۹۳، ۵۳۷، ۷۶۰، ۷۱۷ کاراکتر)
+  • پیام آخر: "Interrupted by user" در ۱۹:۳۰:۱۷
+
+دو subagent موازی اجرا شد:
+  • general-purpose-1 → task agent-44d1d5d0، مدت ۲m 52s، پایان ۱۵:۵۶:۱۶
+    نتیجه: Hermes = NousResearch/hermes-agent (MIT)؛ DSH = deepseek-ai/deepseek-harness (MIT، developer preview با هشدار breaking change)؛ Antigravity = Google اما «چهار سطح محلی مختلف» + یک managed cloud جدا.
+  • general-purpose-2 → تحقیق رقابتی (Dify, LangGraph, n8n, OpenHands, CrewAI + پلتفرم‌های ایرانی)
+
+هر دو task تحقیق به وضعیت completed رسیدند. task چهارم («Evaluate and present the architecture decisions») در حال انجام بود که کاربر session را قطع کرد.
+
+نکتهٔ جانبی: subagent دوم task #1 را از «ارزیابی معماری» به «تحقیق رقابتی» تغییر داده بود و team-lead مجبور شد آن را بازگرداند — یک نمونهٔ واقعی از درگیری نوشتن در task list مشترک، که دقیقاً همان مسئله‌ای است که سند معماری برایش راهکار پیشنهاد می‌دهد.
+
+یافته‌های رقابتی (تأییدشده از این سشن، اما هنوز به‌عنوان شواهد محصول اعتبارسنجی نشده):
+  • agentshub.ir — پلتفرم سازمانی یکپارچه‌سازی agent. اما catalog صریحاً «coming soon» و pricing «still being finalized». بدون demo، بدون sandbox، بدون لایهٔ قیمت — فقط CTA تماس.
+  • cgr.ir/products/agentic-ai — پلتفرم Agentic AI سازمانی (GITA) با MCP، Multi-Step Planning، Memory Layers، Guardrails، Audit کامل هر تصمیم، RBAC/ABAC، Zero Trust.
+  • OpenHands Agent Canvas — «open-source control surface» با اتصال به چند backend (local/Docker/VM/Modal/Cloud) و پشتیبانی از ACP agent. نزدیک‌ترین محصول موجود به ایدهٔ شما.
+  • n8n human-in-the-loop — تأیید/رد انسانی قبل از اجرای tool مشخص. approval pattern موجود.
+
+════════════════════════════════════════════
+۶. یافته‌های تازهٔ این سشن: رانتایم‌های نصب‌شده
+════════════════════════════════════════════
+
+این بخش در سشن قبلی «نامعلوم» ثبت شده بود. اکنون تأیید شد:
+
+Hermes — نصب‌شده ✅
+  • C:\Users\Mehdi\AppData\Local\hermes\bin\hermes.exe
+  • Hermes Agent v0.21.3 (2026.9.14) · upstream b851bd1a
+  • نصب از طریق git در C:\Users\Mehdi\AppData\Local\hermes\hermes-agent
+  • Python 3.11.16، OpenAI SDK 2.24.0
+  • hermes-acp.exe هم موجود است (سطح ACP)
+  • ⚠️ API_SERVER در config.yaml فعال نیست
+  • ⚠️ هیچ ~/.hermes وجود ندارد
+  • state غنی: config.yaml، kanban.db، projects.db، shared-state.db، state.db، memory_store.db، ۲۸ skill، ۳ profile (arc-devops-engineer، my-personal-assistant، research-assistant)، sessions/، sandboxes/، wisdom/
+  • COMPAT_MANIFEST.md با ۱۵۹KB و .env.example با ۲۶KB
+
+DSH — نصب‌شده ✅
+  • C:\Users\Mehdi\AppData\Local\hermes\node\dsh
+  • نسخه: 0.1.5-rc.2
+  • C:\Users\Mehdi\.dsh\ — settings.yaml (provider پیش‌فرض: seekai/glm-5.3)، .credentials.yaml، profiles/
+  • profiles/node_modules شامل @agentclientprotocol، @deepseek-ai، @modelcontextprotocol
+
+Antigravity — فقط IDE ⚠️
+  • C:\Users\Mehdi\AppData\Local\Programs\Antigravity IDE\bin\antigravity-ide
+  • Antigravity.exe (اپلیکیشن Electron)
+  • ❌ هیچ CLI با نام agy روی PATH نیست
+  • ❌ بستهٔ پایتون google-antigravity نصب نیست
+  • نتیجه: هیچ سطح برنامه‌پذیر (CLI یا SDK) محلی وجود ندارد
+
+این یافته یک سؤال باز از سند معماری (بند ۸.۱: «Antigravity IDE در برابر CLI/SDK») را قطعی می‌کند — و پاسخ فعلی این است که فقط IDE موجود است.
+
+════════════════════════════════════════════
+۷. یافتهٔ مهم: یک اجرای ناموفق DSH روی همین پروژه
+════════════════════════════════════════════
+
+در C:\Users\Mehdi\.dsh\sessions\--D-DEV-Studio-Programming-Agent-OS--\ یک سشن DSH با نام session-e8399e59-4527-4511-8d4e-eca5ef9fbc80 پیدا شد.
+
+لاگ آن به‌صورت zstd-compressed JSONL ذخیره شده (session.v3.jsonl.zstd، ۶۲,۹۰۶ بایت). پس از دیکامپرس، ۵۰ خط JSONL با محتوای زیر استخراج شد:
+
+  خط ۱: {"type":"session","version":3,"id":"session-e8399e59-...","cwd":"D:\\DEV-Studio\\Programming\\Agent-OS","delegationDepth":0,"agentPreset":"standard"}
+  خط ۲: {"type":"permission/preset","seq":0,"data":{"preset":"workspace-write"}}
+  خط آخر: {"type":"turn/end","seq":48,"time":...,"data":{"turn":2,"reason":{"kind":"error","error":{"message":"504 status code (no body)","code":"SERVER"}}}}
+
+تفسیر:
+  • DSH قبلاً روی همین پروژه اجرا شده و در turn ۲ با خطای HTTP 504 (server error) شکست خورده است.
+  • preset مجوز workspace-write بوده (نه danger-full-access — یعنی از تلهٔ امنیتی مستندشده اجتناب شده).
+  • خطای 504 یعنی مشکل از سمت provider/endpoint بوده، نه از کد پروژه.
+
+ارزش معماری این یافته: دقیقاً همان مسئله‌ای را نشان می‌دهد که سند دربارهٔ آن هشدار می‌دهد — «یک worker می‌تواند در میانهٔ کار بمیرد و نتیجهٔ نامعلوم بگذارد». این سشن الان یک interrupted/unknown است که هرگز reconcile نشده. لایهٔ کنترل باید چنین حالتی را به‌عنوان unknown ثبت کند، نه failed و نه success.
+
+نکتهٔ فنی مرتبط: ذخیره‌سازی zstd-compressed JSONL به‌طور مستقیم به بحث «لایهٔ execution evidence» در سند ربط دارد — یعنی شواهد اجرا فشرده و غیرقابل‌خواندن مستقیم برای انسان است، پس لایهٔ کنترل باید خودش artifact قابل‌بازبینی بسازد. همچنین این تأیید می‌کند که محدودیت ACP («فقط متن committed، بدون live tool telemetry») یک مسئلهٔ واقعی است: telemetry در فایل session است، نه در جریان ACP.
+
+════════════════════════════════════════════
+۸. تفکیک «نصب‌شده» از «یکپارچه‌شده»
+════════════════════════════════════════════
+
+┌─────────────────┬───────────┬───────────────┬──────────────────────────┐
+│ کامپوننت        │ نصب‌شده؟  │ یکپارچه‌شده؟  │ مسدودکننده اصلی          │
+├─────────────────┼───────────┼───────────────┼──────────────────────────┤
+│ Hermes          │ ✅ v0.21.3│ ❌            │ API_SERVER غیرفعال        │
+│ DSH             │ ✅ 0.1.5  │ ❌ (شکست 504) │ provider endpoint         │
+│ Antigravity     │ ⚠️ IDE فقط│ ❌            │ بدون CLI/SDK محلی        │
+│ Obsidian vault  │ نامعلوم   │ ❌            │ پیدا نشد                 │
+│ Control plane   │ ❌        │ ❌            │ اصلاً ساخته نشده         │
+│ Dashboard       │ ❌        │ ❌            │ اصلاً ساخته نشده         │
+└─────────────────┴───────────┴───────────────┴──────────────────────────┘
+
+════════════════════════════════════════════
+۹. تصمیم‌های باز (از سند، بند ۸)
+════════════════════════════════════════════
+
+۱. مسیر/نسخهٔ دقیق هر سه رانتایم — ✅ اکنون تأیید شد (بخش ۶ همین گزارش)
+   → باقی‌مانده: Windows در برابر WSL/container برای اجرای workerها
+۲. اولین repository و مأموریت واقعی با معیار پذیرش قابل‌مشاهده — ❌ هنوز انتخاب نشده
+۳. امکانات isolation که واقعاً در دسترس است و نحوهٔ محدودسازی شبکه/credentials — ❌
+۴. نقش Antigravity: coder جایگزین، متخصص، یا بازبین؟ — ❌ (و اکنون می‌دانیم فقط IDE محلی است)
+۵. مدت اعتبار یک تأیید scoped: یک job یا یک پروژه؟ — ❌
+
+════════════════════════════════════════════
+۱۰. ارزیابی صادقانه
+════════════════════════════════════════════
+
+نقاط قوت:
+  ✔️ تفکر معماری عمیق و مستند — سند ۲۳KB با ۱۰ منبع رسمی، نه ادعای بی‌پشتوانه
+  ✔️ تفکیک درست «نصب‌شده» از «یکپارچه‌شده» از همان ابتدا
+  ✔️ هشدارهای امنیتی دقیق و غیرکلیشه‌ای (تلهٔ danger-full-access، مسئلهٔ self-approval)
+  ✔️ هر سه رانتایم واقعاً نصب هستند — زیرساخت پایه موجود است
+
+شکاف‌ها:
+  ✖️ صفر خط کد. صفر commit. صفر تست.
+  ✖️ Claw/ خالی است و هیچ مشخص نیست چه چیزی باید در آن باشد
+  ✖️ .workbuddy-ai/memory/2026-09-21.md این workspace فقط ۱۳ بایت (فقط هدر) است
+  ✖️ یک سشن DSH شکست‌خورده و reconcile‌نشده روی پروژه باقی مانده
+  ✖️ هیچ تصمیم قطعی دربارهٔ استک (Python یا TypeScript) گرفته نشده
+  ✖️ تحقیق رقابتی انجام شد اما به‌عنوان شواهد محصول اعتبارسنجی نشد
+
+مهم‌ترین ریسک فعلی: پروژه در loop «معماری بیشتر» گیر کرده است. سند معماری خوب و کافی است. قدم بعدی باید یک vertical slice اجراشدنی باشد، نه سند پنجم.
+
+════════════════════════════════════════════
+۱۱. پیشنهاد قدم بعدی
+════════════════════════════════════════════
+
+کوچک‌ترین قدم واقعی که نشان می‌دهد سیستم کار می‌کند:
+
+«یک تست شکست‌خوردهٔ مشخص را در یک کپی دورانداختنی از یک repo انتخاب‌شده درست کن و یک patch قابل‌بازبینی به‌همراه شواهد تست برگردان؛ merge یا publish نکن.»
+
+برای این کار لازم است (به ترتیب):
+  ۱. فعال‌کردن API_SERVER در Hermes config.yaml و تولید API_SERVER_KEY — بدون این، Hermes یکپارچه نمی‌شود
+  ۲. بررسی اینکه خطای 504 در DSH از کدام endpoint می‌آید و رفع آن
+  ۳. تصمیم دربارهٔ isolation: Docker / WSL2 / VM / فقط worktree + policy
+  ۴. انتخاب اولین repo و مأموریت با معیار پذیرش روشن
+  ۵. نوشتن فقط همان یک سرویس کنترل کوچک (SQLite + dispatch + approval)
+
+════════════════════════════════════════════
+
+هیچ فایلی در این بازبینی تغییر نکرد، هیچ رانتایمی اجرا نشد، هیچ تنظیماتی نوشته نشد و هیچ داده‌ای به سرویس بیرونی فرستاده نشد. تمام بررسی‌ها read-only بودند.
