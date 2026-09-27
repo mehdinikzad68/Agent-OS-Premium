@@ -469,7 +469,10 @@ class UiI18nTest(unittest.TestCase):
                 r'const\s+\w+\s*=\s*document\.createElement\(\s*"(\w+)"\s*\);\s*\n'
                 r'\s*\w+\.type\s*=\s*"button";\s*\n'
                 r'\s*\w+\.className\s*=\s*"item";\s*\n'
-                r'\s*\w+\.innerHTML\s*=\s*`<[^`]*\$\{' + name + r"\.",
+                # (?:escapeHtml\()? - the title may be escaped, and that is
+                # the point. What this test cares about is the element type,
+                # not which interpolation happens to come first.
+                r'\s*\w+\.innerHTML\s*=\s*`<[^`]*\$\{(?:escapeHtml\()?' + name + r"\.",
                 self.html,
             )
             self.assertIsNotNone(
@@ -484,6 +487,41 @@ class UiI18nTest(unittest.TestCase):
         self.assertIn(
             ":focus-visible", self.html, "a keyboard user must be able to see focus"
         )
+
+    def test_every_user_supplied_interpolation_is_escaped(self):
+        """A string scan, because the behavioural test below needs this to be
+        true for the RIGHT reasons and this catches the next one that drifts.
+
+        The exceptions are deliberate and each is either a number, built from
+        the catalogue, or already-escaped markup. Anything else reaching
+        innerHTML is a finding.
+        """
+        import re as _re
+        allowed = ("escapeHtml(", "t(", "badge(", "escapeAttr(")
+        offenders = []
+        for m in _re.finditer(r"\.innerHTML\s*=\s*`([^`]*)`", self.html, _re.S):
+            for e in _re.finditer(r"\$\{([^}]*)\}", m.group(1)):
+                expr = e.group(1).strip()
+                if not expr:
+                    continue
+                if any(k in expr for k in allowed):
+                    continue
+                # numbers, and markup that is already escaped upstream
+                if _re.fullmatch(r"[\w.\[\]]*(attempt_no|seq)\b[\w.\[\]]*", expr):
+                    continue
+                if expr in ("actions.join(\"\")", "evidenceHtml", "ts", "e.kind",
+                            "badges ? `<div class=\"m\">${badges}</div>` : \"\""):
+                    continue
+                if expr == "a.id":
+                    # server-generated approval id, and escapeHtml would NOT
+                    # help inside onclick: entities are decoded before the JS
+                    # runs. Fixing it properly means moving the binding off
+                    # inline onclick, which is tracked, not silently done here.
+                    continue
+                offenders.append(expr)
+        self.assertEqual(
+            offenders, [],
+            f"these reach innerHTML without escaping: {offenders}")
 
     def test_no_nested_buttons(self):
         """Assert the approval row stays a container, not a button.

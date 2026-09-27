@@ -540,9 +540,9 @@ async function connect() {
 async function loadStatus() {
   const s = await api("GET", "/api/status");
   $("status").innerHTML = `
-    <div><b>${t("sys.version")}</b> ${s.version}</div>
+    <div><b>${t("sys.version")}</b> ${escapeHtml(s.version)}</div>
     <div><b>${t("sys.executors")}</b> ${(s.executors||[]).join(", ") || t("sys.none")}</div>
-    <div><b>${t("sys.db")}</b> <span class="muted">${s.db_path}</span></div>`;
+    <div><b>${t("sys.db")}</b> <span class="muted">${escapeHtml(s.db_path)}</span></div>`;
 }
 
 async function loadMissions() {
@@ -553,7 +553,7 @@ async function loadMissions() {
     const div = document.createElement("button");
     div.type = "button";
     div.className = "item";
-    div.innerHTML = `<span class="t">${m.title}</span><span class="m">${badge(m.state)}</span>`;
+    div.innerHTML = `<span class="t">${escapeHtml(m.title)}</span><span class="m">${badge(m.state)}</span>`;
     div.onclick = () => { selectedMission = m; loadMissionDetail(m.id); };
     el.appendChild(div);
   });
@@ -562,8 +562,8 @@ async function loadMissions() {
 async function loadMissionDetail(id) {
   const m = await api("GET", "/api/missions/" + id);
   $("mission-detail").innerHTML = `
-    <div class="row-inline"><b>${m.title}</b> ${badge(m.state)}
-      <span class="muted">${m.id}</span></div>
+    <div class="row-inline"><b>${escapeHtml(m.title)}</b> ${badge(m.state)}
+      <span class="muted">${escapeHtml(m.id)}</span></div>
     <div class="row-inline" style="margin-top:6px">
       <button id="btn-activate" class="primary">${t("mission.activate")}</button>
       <button id="btn-new-job">${t("mission.newJob")}</button>
@@ -582,8 +582,8 @@ async function loadJobs(missionId) {
     const div = document.createElement("button");
     div.type = "button";
     div.className = "item";
-    div.innerHTML = `<span class="t">${j.title}</span>
-      <span class="m">${badge(j.state)} · ${j.executor} · ${t("job.attempt")} ${j.attempt_no}</span>`;
+    div.innerHTML = `<span class="t">${escapeHtml(j.title)}</span>
+      <span class="m">${badge(j.state)} · ${escapeHtml(j.executor)} · ${t("job.attempt")} ${j.attempt_no}</span>`;
     div.onclick = () => showJob(j);
     el.appendChild(div);
   });
@@ -707,8 +707,8 @@ async function loadApprovals() {
   pending.forEach((a) => {
     const div = document.createElement("div");
     div.className = "item";
-    div.innerHTML = `<div class="t">${t("approvals.forJob")} <span class="muted">${a.job_id}</span></div>
-      <div class="m">scope: ${a.scope.executor} · ${(a.scope.actions||[]).join(", ")}</div>
+    div.innerHTML = `<div class="t">${t("approvals.forJob")} <span class="muted">${escapeHtml(a.job_id)}</span></div>
+      <div class="m">scope: ${escapeHtml(a.scope.executor)} · ${escapeHtml((a.scope.actions||[]).join(", "))}</div>
       <div class="row-inline" style="margin-top:6px">
         <button class="ok" onclick="decide('${a.id}','granted')">${t("approvals.grant")}</button>
         <button class="bad" onclick="decide('${a.id}','denied')">${t("approvals.reject")}</button>
@@ -749,8 +749,8 @@ async function loadProjects() {
       p.is_symlink ? t("ui.symlink") : "",
       p.read_only ? t("ui.readOnly") : "",
     ].filter(Boolean).join(" · ");
-    div.innerHTML = `<div class="t">${p.name}</div>
-      <div class="m">${p.canonical_root}</div>
+    div.innerHTML = `<div class="t">${escapeHtml(p.name)}</div>
+      <div class="m">${escapeHtml(p.canonical_root)}</div>
       ${badges ? `<div class="m">${badges}</div>` : ""}
       <div class="row-inline">
         <button type="button" class="pill">${t("ui.remove")}</button>
