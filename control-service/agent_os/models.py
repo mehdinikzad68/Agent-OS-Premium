@@ -123,6 +123,19 @@ class Approval:
     manifest_hash: str
 
 
+class ProjectRejected(Exception):
+    """A project root was refused. Carries a machine-readable reason.
+
+    Distinct from ValueError because the HTTP layer must map the reason to a
+    status: a malformed path is a bad request, a path already registered is a
+    conflict. Callers branch on .reason, never on the message.
+    """
+
+    def __init__(self, reason: str, message: str = ""):
+        super().__init__(message or reason)
+        self.reason = reason
+
+
 @dataclass
 class Project:
     id: str

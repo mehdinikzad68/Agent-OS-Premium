@@ -18,12 +18,25 @@ architecture brief section 7):
 from __future__ import annotations
 
 import logging
+import os
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from .adapters.fake import FakeExecutor  # noqa: F401  (re-export for tests)
 from .logging_setup import get_logger, log_event
+from .paths import (
+    REASON_NOT_ABSOLUTE,
+    REASON_OK,
+    REASON_OUTSIDE_SCOPE,
+    REASON_TRAVERSAL,
+    REASON_WINDOWS_UNSUPPORTED,
+    canonicalize,
+    check_project_root,
+    is_within,
+)
+
 from .models import (
     Approval,
     ApprovalDecision,
@@ -36,6 +49,8 @@ from .models import (
     Mission,
     MissionState,
     Principal,
+    Project,
+    ProjectRejected,
     WorkerLostError,
     WorkerOutcome,
     iso,
@@ -66,6 +81,77 @@ def _bounded_evidence(evidence: dict | None) -> dict:
 _log = get_logger("service")
 
 
+PROJECT_SCOPE_ENV = "AGENT_OS_PROJECT_SCOPE"
+"""Where registered project roots may live. Configuration, not a product root.
+
+The roadmap forbids hardcoding the product root, so nothing here names a
+project. When neither this variable nor the default directory exists,
+registration fails closed rather than widening to the whole filesystem.
+"""
+
+REASON_SCOPE_UNSET = "scope_unset"
+REASON_MISSING = "missing"
+REASON_NOT_A_DIRECTORY = "not_a_directory"
+REASON_NOT_READABLE = "not_readable"
+REASON_SYMLINK_ESCAPE = "symlink_escapes_scope"
+
+
+def project_scope() -> Optional[str]:
+    """The configured allowed root, or None when there is no safe default."""
+    configured = os.environ.get(PROJECT_SCOPE_ENV)
+    if configured:
+        return canonicalize(configured)
+    default = os.path.join(os.path.expanduser("~"), "workspace")
+    if os.path.isdir(default):
+        return canonicalize(default)
+    return None
+
+
+def inspect_root(raw: str, scope: str, environment: str) -> "RootInspection":
+    """Check a typed path against the real filesystem, after the lexical gate.
+
+    Existence, type, readability and symlink escape are decided here and
+    nowhere else. Nothing in this function writes, mounts, or executes: a
+    registration must be inert, so the only side effect is a read.
+    """
+    if environment != "wsl":
+        return RootInspection(False, REASON_WINDOWS_UNSUPPORTED, "", False)
+    if not os.path.isabs(raw):
+        return RootInspection(False, REASON_NOT_ABSOLUTE, "", False)
+    if any(seg == ".." for seg in raw.split("/")):
+        return RootInspection(False, REASON_TRAVERSAL, "", False)
+
+    canonical = canonicalize(raw)
+    if not is_within(scope, canonical):
+        return RootInspection(False, REASON_OUTSIDE_SCOPE, canonical, False)
+    if not os.path.exists(raw):
+        return RootInspection(False, REASON_MISSING, canonical, False)
+    if not os.path.isdir(raw):
+        return RootInspection(False, REASON_NOT_A_DIRECTORY, canonical, False)
+    if not os.access(raw, os.R_OK | os.X_OK):
+        return RootInspection(False, REASON_NOT_READABLE, canonical, False)
+
+    is_symlink = os.path.islink(raw)
+    # Containment was proved lexically. A symlink can leave the scope while
+    # every string still looks fine, so re-prove it against the resolved path.
+    resolved = os.path.realpath(raw)
+    if not is_within(canonicalize(scope), canonicalize(resolved)):
+        return RootInspection(
+            False, REASON_SYMLINK_ESCAPE, canonicalize(resolved), is_symlink
+        )
+    return RootInspection(True, REASON_OK, canonicalize(resolved), is_symlink)
+
+
+@dataclass(frozen=True)
+class RootInspection:
+    """What the filesystem says about a candidate root."""
+
+    ok: bool
+    reason: str
+    canonical: str
+    is_symlink: bool
+
+
 class ControlService:
     def __init__(self, db_path: str | Path):
         self.store = Store(db_path)
@@ -76,6 +162,61 @@ class ControlService:
     # ------------------------------------------------------------------
     # missions
     # ------------------------------------------------------------------
+
+    # -- projects -------------------------------------------------------
+
+    def list_projects(self) -> list[Project]:
+        return self.store.list_projects()
+
+    def register_project(
+        self,
+        name: str,
+        environment: str,
+        root: str,
+        scope: Optional[str] = None,
+    ) -> Project:
+        """Validate a project root and record it. Read-only against the disk.
+
+        Two gates, in this order. The lexical one is pure and cheap; the disk
+        one is what sees a symlink escaping the scope. Both must pass.
+
+        scope is a parameter rather than a lookup so a caller can register
+        against an explicit root, but the default comes from configuration
+        (project_scope) and never from a product path.
+        """
+        if scope is None:
+            scope = project_scope()
+        if scope is None:
+            raise ProjectRejected(
+                REASON_SCOPE_UNSET,
+                f"set {PROJECT_SCOPE_ENV} to the directory projects may live in",
+            )
+
+        lexical = check_project_root(root, scope, environment)
+        if not lexical.ok:
+            raise ProjectRejected(lexical.reason, f"refused {root!r}: {lexical.reason}")
+
+        disk = inspect_root(root, scope, environment)
+        if not disk.ok:
+            raise ProjectRejected(disk.reason, f"refused {root!r}: {disk.reason}")
+
+        project = self.store.create_project(
+            name=name,
+            environment=environment,
+            root=root,
+            canonical_root=disk.canonical,
+            is_symlink=disk.is_symlink,
+        )
+        if project is None:
+            raise ProjectRejected(
+                "duplicate", f"{environment}:{disk.canonical} is already registered"
+            )
+        self.store.record_event(
+            "project_registered",
+            {"project_id": project.id, "name": name, "root": disk.canonical,
+             "is_symlink": disk.is_symlink},
+        )
+        return project
 
     def create_mission(self, title: str, now: Optional[datetime] = None) -> Mission:
         now = now or utc_now()
