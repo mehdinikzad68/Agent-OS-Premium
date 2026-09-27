@@ -33,6 +33,8 @@ from .models import (
     Mission,
     MissionState,
     Principal,
+    Project,
+    ProjectRejected,
     utc_now,
 )
 from .logging_setup import get_logger, log_event
@@ -104,6 +106,39 @@ def _approval_to_dict(approval: Approval) -> dict:
     }
 
 
+
+
+def _project_to_dict(project: Project) -> dict:
+    return {
+        "id": project.id,
+        "name": project.name,
+        "environment": project.environment,
+        "root": project.root,
+        "canonical_root": project.canonical_root,
+        "is_symlink": project.is_symlink,
+        "read_only": project.read_only,
+        "created_at": project.created_at,
+    }
+
+
+# A refused root is mostly the caller's mistake and is a 400. A root that is
+# already registered is a conflict. An unconfigured scope is nobody's
+# mistake - the server is not configured - so it is a 500, not a 400: saying
+# "bad request" there would blame the caller for our missing configuration.
+_PROJECT_REJECTIONS = {
+    "duplicate": (409, "conflict", "project root is already registered"),
+    "scope_unset": (
+        500,
+        "scope_unset",
+        "server has no project scope configured; set AGENT_OS_PROJECT_SCOPE",
+    ),
+}
+
+
+def _project_rejection(reason: str) -> tuple[int, dict]:
+    status, code, message = _PROJECT_REJECTIONS.get(reason, (400, "bad_request", reason))
+    return status, {"error": {"code": code, "message": message}}
+
 class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str):
         super().__init__(message)
@@ -136,6 +171,8 @@ class AgentOSApi:
             return 403, {"error": {"code": "forbidden", "message": str(e)}}
         except DispatchRefused as e:
             return 409, {"error": {"code": "dispatch_refused", "message": e.reason}}
+        except ProjectRejected as e:
+            return _project_rejection(e.reason)
         except ValueError as e:
             return 400, {"error": {"code": "bad_request", "message": str(e)}}
         except Exception as e:  # noqa: BLE001 - last-resort guard; never leak internals
@@ -170,6 +207,8 @@ class AgentOSApi:
             return 200, {"approvals": [self._approval_public(a) for a in self._all_approvals()]}
         if path.startswith("/api/approvals/"):
             return 200, self._approval_public(self.service.store.get_approval(p[2]))
+        if path == "/api/projects":
+            return 200, {"projects": [self._project_public(p) for p in self.service.list_projects()]}
         if path == "/api/events":
             return 200, {"events": self.service.store.list_events()}
         if path == "/api/executors":
@@ -179,6 +218,13 @@ class AgentOSApi:
     # -- POST ---------------------------------------------------------------
 
     def _post(self, path: str, body: dict) -> tuple[int, object]:
+        if path == "/api/projects":
+            name = self._require_str(body, "name")
+            environment = self._require_str(body, "environment")
+            root = self._require_str(body, "root")
+            return 201, self._project_public(
+                self.service.register_project(name, environment, root)
+            )
         if path == "/api/missions":
             title = self._require_str(body, "title")
             return 201, self._mission_public(self.service.create_mission(title))
@@ -327,6 +373,9 @@ class AgentOSApi:
         if job is None:
             raise KeyError("job not found")
         return _job_to_dict(job)
+
+    def _project_public(self, project: Project) -> dict:
+        return _project_to_dict(project)
 
     def _approval_public(self, approval: Optional[Approval]) -> dict:
         if approval is None:
