@@ -124,6 +124,18 @@ class Approval:
 
 
 @dataclass
+class Project:
+    id: str
+    name: str
+    environment: str
+    root: str
+    canonical_root: str
+    is_symlink: bool
+    read_only: bool
+    created_at: str
+
+
+@dataclass
 class WorkerOutcome:
     """What an executor reports back. Claimed, not trusted: the service
     verifies required evidence before any state becomes 'verified'."""

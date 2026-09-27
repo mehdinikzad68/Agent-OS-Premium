@@ -27,6 +27,7 @@ from .models import (
     Mission,
     MissionState,
     Principal,
+    Project,
     iso,
     utc_now,
 )
@@ -82,6 +83,17 @@ CREATE TABLE IF NOT EXISTS knowledge_docs (
   revision INTEGER NOT NULL DEFAULT 0,
   content TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  environment TEXT NOT NULL,
+  root TEXT NOT NULL,
+  canonical_root TEXT NOT NULL,
+  is_symlink INTEGER NOT NULL,
+  read_only INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (environment, canonical_root)
 );
 """
 
@@ -404,3 +416,81 @@ class Store:
                     "UPDATE knowledge_docs SET revision=?, content=?, updated_at=? WHERE id=?",
                     (revision, content, iso(utc_now()), doc_id),
                 )
+
+    # -- projects --------------------------------------------------------
+
+    def create_project(
+        self,
+        name: str,
+        environment: str,
+        root: str,
+        canonical_root: str,
+        is_symlink: bool,
+        read_only: bool = True,
+        now: Optional[datetime] = None,
+    ) -> Optional[Project]:
+        with self._lock:
+            project = Project(
+                id=_new_id("project"),
+                name=name,
+                environment=environment,
+                root=root,
+                canonical_root=canonical_root,
+                is_symlink=is_symlink,
+                read_only=read_only,
+                created_at=iso(now or utc_now()),
+            )
+            try:
+                with self.conn:
+                    self.conn.execute(
+                        "INSERT INTO projects (id, name, environment, root,"
+                        " canonical_root, is_symlink, read_only, created_at)"
+                        " VALUES (?,?,?,?,?,?,?,?)",
+                        (
+                            project.id, project.name, project.environment,
+                            project.root, project.canonical_root,
+                            1 if is_symlink else 0, 1 if read_only else 0,
+                            project.created_at,
+                        ),
+                    )
+            except sqlite3.IntegrityError:
+                # Duplicate (environment, canonical_root): normal outcome.
+                return None
+        return project
+
+    def get_project(self, project_id: str) -> Optional[Project]:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT * FROM projects WHERE id=?", (project_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return self._row_to_project(row)
+
+    def list_projects(self) -> list[Project]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM projects ORDER BY created_at, id"
+            ).fetchall()
+            return [self._row_to_project(row) for row in rows]
+
+    def delete_project(self, project_id: str) -> bool:
+        with self._lock:
+            with self.conn:
+                cur = self.conn.execute(
+                    "DELETE FROM projects WHERE id=?", (project_id,)
+                )
+            return cur.rowcount > 0
+
+    @staticmethod
+    def _row_to_project(row: sqlite3.Row) -> Project:
+        return Project(
+            id=row["id"],
+            name=row["name"],
+            environment=row["environment"],
+            root=row["root"],
+            canonical_root=row["canonical_root"],
+            is_symlink=bool(row["is_symlink"]),
+            read_only=bool(row["read_only"]),
+            created_at=row["created_at"],
+        )
