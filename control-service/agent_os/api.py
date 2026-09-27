@@ -137,7 +137,10 @@ _PROJECT_REJECTIONS = {
 
 def _project_rejection(reason: str) -> tuple[int, dict]:
     status, code, message = _PROJECT_REJECTIONS.get(reason, (400, "bad_request", reason))
-    return status, {"error": {"code": code, "message": message}}
+    # `reason` is repeated next to the prose on purpose: the browser maps a
+    # refusal to a translated string by reason, and it must not have to parse
+    # English or keep its own table that can drift from this one.
+    return status, {"error": {"code": code, "message": message, "reason": reason}}
 
 class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str):

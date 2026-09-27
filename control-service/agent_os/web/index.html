@@ -136,6 +136,23 @@
       <pre id="diag" class="feed" style="margin-top:8px">—</pre>
       <button id="diag-clear" type="button" data-i18n="diag.clear"></button>
     </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2 data-i18n="ui.projects"></h2>
+      <form id="proj-form">
+        <div class="row-inline">
+          <input id="proj-name" aria-label="" placeholder="">
+          <input id="proj-root" aria-label="" placeholder="" style="flex:1">
+          <select id="proj-env" aria-label="">
+            <option value="wsl">wsl</option>
+            <option value="windows">windows</option>
+          </select>
+          <button class="ok" id="proj-add" type="submit"></button>
+        </div>
+      </form>
+      <div id="proj-list" class="list"></div>
+      <p id="proj-msg" class="muted"></p>
+    </div>
   </main>
 </div>
 
@@ -158,6 +175,16 @@ const I18N = {
     "auth.connect": "Connect",
     "ui.language": "Language",
     "ui.saved": "Language saved",
+    "ui.projects": "Projects",
+    "ui.noProjects": "No project registered yet",
+    "ui.name": "Name",
+    "ui.root": "Folder",
+    "ui.rootPlaceholder": "Absolute path, for example /home/you/workspace/site",
+    "ui.environment": "Environment",
+    "ui.register": "Register",
+    "ui.readOnly": "read-only",
+    "ui.symlink": "symlink",
+    "ui.registered": "Project registered",
     "sys.status": "System status",
     "sys.version": "Version:",
     "sys.executors": "Executors:",
@@ -191,6 +218,16 @@ const I18N = {
     "toast.approved": "Approved",
     "toast.denied": "Rejected",
     "err.prefix": "Error: ",
+    "err.not_absolute": "The path must be absolute",
+    "err.traversal": "The path may not contain ..",
+    "err.outside_scope": "That folder is outside the allowed area",
+    "err.missing": "That path does not exist",
+    "err.not_a_directory": "That path is a file, not a folder",
+    "err.not_readable": "That folder cannot be read",
+    "err.symlink_escapes_scope": "That link points outside the allowed area",
+    "err.windows_unsupported": "Only the wsl environment is supported now",
+    "err.scope_unset": "The server has no allowed area configured",
+    "err.duplicate": "That path is already registered",
     "prompt.finalState": "Final state (failed / completed_verified / completed_unverified):",
     "reconcile.note": "Manual reconcile",
     "prompt.jobTitle": "Job title:",
@@ -223,6 +260,16 @@ const I18N = {
     "auth.connect": "اتصال",
     "ui.language": "زبان",
     "ui.saved": "زبان ذخیره شد",
+    "ui.projects": "پروژه‌ها",
+    "ui.noProjects": "هنوز پروژه‌ای ثبت نشده",
+    "ui.name": "نام",
+    "ui.root": "پوشه",
+    "ui.rootPlaceholder": "مسیر مطلق، برای نمونه /home/you/workspace/site",
+    "ui.environment": "محیط",
+    "ui.register": "ثبت",
+    "ui.readOnly": "فقط‌خواندنی",
+    "ui.symlink": "نماد_symlink",
+    "ui.registered": "پروژه ثبت شد",
     "sys.status": "وضعیت سیستم",
     "sys.version": "نسخه:",
     "sys.executors": "executorها:",
@@ -256,6 +303,16 @@ const I18N = {
     "toast.approved": "تأیید شد",
     "toast.denied": "رد شد",
     "err.prefix": "خطا: ",
+    "err.not_absolute": "مسیر باید مطلق باشد",
+    "err.traversal": "مسیر نباید شامل .. باشد",
+    "err.outside_scope": "آن پوشه خارج از محدودهٔ مجاز است",
+    "err.missing": "چنین مسیری وجود ندارد",
+    "err.not_a_directory": "آن مسیر یک فایل است، نه پوشه",
+    "err.not_readable": "این پوشه خواندنی نیست",
+    "err.symlink_escapes_scope": "این پیوند به بیرون محدودهٔ مجاز اشاره می‌کند",
+    "err.windows_unsupported": "فعلاً فقط محیط wsl پشتیبانی می‌شود",
+    "err.scope_unset": "سرور محدودهٔ مجازی تنظیم نکرده است",
+    "err.duplicate": "این مسیر پیش‌تر ثبت شده است",
     "prompt.finalState": "وضعیت نهایی (failed / completed_verified / completed_unverified):",
     "reconcile.note": "تسویه دستی",
     "prompt.jobTitle": "عنوان کار:",
@@ -357,6 +414,9 @@ function setLang(lang) {
   persistLang(LANG);
   syncLangSelect();
   if (typeof applyI18n === "function") applyI18n();
+  // Placeholders and the submit button carry no data-i18n, so applyI18n
+  // cannot reach them; they are labelled by hand on every language change.
+  if (typeof _labelProjectForm === "function") _labelProjectForm();
   // applyI18n only reaches [data-i18n] hooks. Every runtime panel is built
   // with innerHTML from JS, so those keep the previous language until the
   // data is re-rendered from the server.
@@ -435,8 +495,12 @@ async function api(method, path, body) {
     return {};
   });
   if (!resp.ok) {
-    const msg = (data.error && data.error.message) || ("HTTP " + resp.status);
-    throw new Error(msg);
+    const err = data.error || {};
+    // reason is the server's own reason code. message may be prose that the
+    // browser must never parse to decide what to translate.
+    const e = new Error(err.message || ("HTTP " + resp.status));
+    e.reason = err.reason || "";
+    throw e;
   }
   return data;
 }
@@ -649,7 +713,74 @@ async function loadApprovals() {
   });
 }
 
+function reasonText(reason, fallback) {
+  switch (reason) {
+    case "not_absolute": return t("err.not_absolute");
+    case "traversal": return t("err.traversal");
+    case "outside_scope": return t("err.outside_scope");
+    case "missing": return t("err.missing");
+    case "not_a_directory": return t("err.not_a_directory");
+    case "not_readable": return t("err.not_readable");
+    case "symlink_escapes_scope": return t("err.symlink_escapes_scope");
+    case "windows_unsupported": return t("err.windows_unsupported");
+    case "scope_unset": return t("err.scope_unset");
+    case "duplicate": return t("err.duplicate");
+    default: return fallback;
+  }
+}
+
+async function loadProjects() {
+  const d = await api("GET", "/api/projects");
+  const el = $("proj-list");
+  el.innerHTML = "";
+  const rows = d.projects || [];
+  if (rows.length === 0) {
+    el.innerHTML = `<div class="muted">${t("ui.noProjects")}</div>`;
+    return;
+  }
+  rows.forEach((p) => {
+    const div = document.createElement("div");
+    div.className = "item";
+    const badges = [
+      p.is_symlink ? t("ui.symlink") : "",
+      p.read_only ? t("ui.readOnly") : "",
+    ].filter(Boolean).join(" · ");
+    div.innerHTML = `<div class="t">${p.name}</div>
+      <div class="m">${p.canonical_root}</div>
+      ${badges ? `<div class="m">${badges}</div>` : ""}`;
+    el.appendChild(div);
+  });
+}
+
+function _labelProjectForm() {
+  $("proj-name").setAttribute("aria-label", t("ui.name"));
+  $("proj-name").placeholder = t("ui.name");
+  $("proj-root").setAttribute("aria-label", t("ui.root"));
+  $("proj-root").placeholder = t("ui.rootPlaceholder");
+  $("proj-env").setAttribute("aria-label", t("ui.environment"));
+  $("proj-add").textContent = t("ui.register");
+}
+
+$("proj-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const msg = $("proj-msg");
+  msg.textContent = "";
+  try {
+    await api("POST", "/api/projects", {
+      name: $("proj-name").value.trim(),
+      environment: $("proj-env").value,
+      root: $("proj-root").value.trim(),
+    });
+    $("proj-root").value = "";
+    toast(t("ui.registered"));
+    await loadProjects();
+  } catch (e) {
+    msg.textContent = reasonText(e.reason, _errText(e));
+  }
+});
+
 async function decide(approvalId, decision) {
+
   try {
     await api("POST", "/api/approvals/" + approvalId + "/decide", { decision });
     toast(decision === "granted" ? t("toast.approved") : t("toast.denied"));
@@ -673,7 +804,10 @@ async function loadFeed() {
 
 async function refresh() {
   try {
-    await Promise.all([loadStatus(), loadMissions(), loadApprovals(), loadFeed()]);
+    await Promise.all([
+      loadStatus(), loadMissions(), loadApprovals(),
+      loadFeed(), loadProjects(),
+    ]);
     DATA_ON_SCREEN = true;
     if (selectedMission) loadMissionDetail(selectedMission.id);
     if (selectedJob) {
@@ -695,6 +829,7 @@ window.reconcileJob = reconcileJob;
 // disabled localStorage, so boot needs no guard of its own.
 setLang(loadLang());
 applyI18n();
+if (typeof _labelProjectForm === "function") _labelProjectForm();
 $("diag-clear").addEventListener("click", uiLogClear);
 $("btn-connect").onclick = async () => { await connect(); refresh(); };
 $("lang-select").addEventListener("change", (e) => {
