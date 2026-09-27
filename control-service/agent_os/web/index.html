@@ -72,50 +72,50 @@
 <body>
 <header>
   <h1>🛰️ Agent OS — Mission Control</h1>
-  <span class="muted" id="conn">اتصال…</span>
+  <span class="muted" id="conn" data-i18n="conn.connecting"></span>
   <span class="spacer"></span>
-  <input id="token" type="password" placeholder="توکن دسترسی (Bearer)" style="width:220px">
-  <button id="btn-connect" class="primary">اتصال</button>
+  <input id="token" type="password" data-i18n-attr="placeholder:auth.tokenPlaceholder" placeholder="" style="width:220px">
+  <button id="btn-connect" class="primary" data-i18n="auth.connect"></button>
 </header>
 
 <div class="layout">
   <aside>
     <div class="card">
-      <h2>وضعیت سیستم</h2>
+      <h2 data-i18n="sys.status"></h2>
       <div id="status" class="muted">—</div>
     </div>
     <div class="card" style="margin-top:12px">
-      <h2>ثبت مأموریت جدید</h2>
+      <h2 data-i18n="mission.new"></h2>
       <div class="row-inline">
-        <input id="new-mission" placeholder="عنوان مأموریت" style="flex:1">
-        <button id="btn-mission" class="primary">ایجاد</button>
+        <input id="new-mission" data-i18n-attr="placeholder:mission.titlePlaceholder" placeholder="" style="flex:1">
+        <button id="btn-mission" class="primary" data-i18n="mission.create"></button>
       </div>
     </div>
     <div class="card" style="margin-top:12px">
-      <h2>مأموریت‌ها</h2>
+      <h2 data-i18n="mission.list"></h2>
       <div id="missions" class="list"></div>
     </div>
   </aside>
 
   <main>
     <div class="card">
-      <h2>جزئیات مأموریت</h2>
-      <div id="mission-detail" class="muted">یک مأموریت را انتخاب کنید</div>
+      <h2 data-i18n="mission.detail"></h2>
+      <div id="mission-detail" class="muted" data-i18n="mission.selectOne"></div>
       <div id="jobs" class="list" style="margin-top:10px"></div>
     </div>
 
     <div class="card" id="job-card" style="margin-top:12px; display:none">
-      <h2>جزئیات کار + شواهد</h2>
+      <h2 data-i18n="job.detail"></h2>
       <div id="job-detail" class="muted">—</div>
     </div>
 
     <div class="card" style="margin-top:12px">
-      <h2>صندوق تأییدها</h2>
+      <h2 data-i18n="approvals.box"></h2>
       <div id="approvals" class="list"></div>
     </div>
 
     <div class="card" style="margin-top:12px">
-      <h2>رویدادها (event feed)</h2>
+      <h2 data-i18n="feed.title"></h2>
       <div id="feed" class="feed">—</div>
     </div>
   </main>
@@ -125,6 +125,102 @@
 
 <script>
 "use strict";
+// ==== i18n scaffold (Phase 1, step 2a) ====
+// English is the product default; Persian is selectable. Step 2a only builds
+// the skeleton: the existing hard-coded Persian strings are NOT yet migrated,
+// so the visible UI is unchanged by this step. Keys below are the 10 anchors
+// the later migration steps will fill in.
+const I18N = {
+  en: {
+    "app.title": "Agent OS — Mission Control",
+    "conn.connecting": "Connecting…",
+    "conn.connected": "Connected ✅",
+    "conn.error": "Error: ",
+    "conn.needToken": "Enter your token",
+    "auth.tokenPlaceholder": "Access token (Bearer)",
+    "auth.connect": "Connect",
+    "sys.status": "System status",
+    "mission.new": "New mission",
+    "mission.titlePlaceholder": "Mission title",
+    "mission.create": "Create",
+    "mission.list": "Missions",
+    "mission.detail": "Mission details",
+    "mission.selectOne": "Select a mission",
+    "job.detail": "Job details + evidence",
+    "approvals.box": "Approvals",
+    "feed.title": "Events (event feed)",
+  },
+  fa: {
+    "app.title": "Agent OS — Mission Control",
+    "conn.connecting": "اتصال…",
+    "conn.connected": "متصل ✅",
+    "conn.error": "خطا: ",
+    "conn.needToken": "توکن را وارد کنید",
+    "auth.tokenPlaceholder": "توکن دسترسی (Bearer)",
+    "auth.connect": "اتصال",
+    "sys.status": "وضعیت سیستم",
+    "mission.new": "ثبت مأموریت جدید",
+    "mission.titlePlaceholder": "عنوان مأموریت",
+    "mission.create": "ایجاد",
+    "mission.list": "مأموری‌ها",
+    "mission.detail": "جزئیات مأموریت",
+    "mission.selectOne": "یک مأموریت را انتخاب کنید",
+    "job.detail": "جزئیات کار + شواهد",
+    "approvals.box": "صندوق تأییدها",
+    "feed.title": "رویدادها (event feed)",
+  },
+};
+
+const DEFAULT_LANG = "fa"; // step 2d flips the product default to "en"
+let LANG = DEFAULT_LANG;
+
+function t(key) {
+  const table = I18N[LANG] || I18N[DEFAULT_LANG];
+  if (Object.prototype.hasOwnProperty.call(table, key)) return table[key];
+  // Fallback chain: current language -> default language -> the key itself.
+  const fallback = I18N[DEFAULT_LANG];
+  if (Object.prototype.hasOwnProperty.call(fallback, key)) return fallback[key];
+  return key;
+}
+
+// Sets the document language and writing direction for the active language.
+// Persian is RTL; English is LTR. Technical blocks (feed/diff/code) keep their
+// own LTR direction via CSS and are intentionally not affected here.
+/* Fills every [data-i18n] text node and every [data-i18n-attr] attribute from
+   the active catalog, so a language switch re-renders the static markup
+   without a page reload. */
+function applyI18n(root) {
+  const scope = root || document;
+  scope.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    if (key) el.textContent = t(key);
+  });
+  scope.querySelectorAll("[data-i18n-attr]").forEach((el) => {
+    const spec = el.getAttribute("data-i18n-attr") || "";
+    spec.split("|").forEach((pair) => {
+      const idx = pair.indexOf(":");
+      if (idx < 0) return;
+      const attr = pair.slice(0, idx).trim();
+      const key = pair.slice(idx + 1).trim();
+      if (attr && key) el.setAttribute(attr, t(key));
+    });
+  });
+}
+
+function setLang(lang) {
+  LANG = Object.prototype.hasOwnProperty.call(I18N, lang) ? lang : DEFAULT_LANG;
+  document.documentElement.lang = LANG === "fa" ? "fa" : "en";
+  document.documentElement.dir = LANG === "fa" ? "rtl" : "ltr";
+  try { localStorage.setItem("agent_os_lang", LANG); } catch (e) { /* private mode */ }
+  if (typeof applyI18n === "function") applyI18n();
+  return LANG;
+}
+
+function localeFor() {
+  return LANG === "fa" ? "fa-IR" : "en-US";
+}
+// ==== end i18n scaffold ====
+
 const $ = (id) => document.getElementById(id);
 let TOKEN = localStorage.getItem("agent_os_token") || "";
 let selectedMission = null;
@@ -389,6 +485,10 @@ window.requestApproval = requestApproval;
 window.dispatchJob = dispatchJob;
 window.reconcileJob = reconcileJob;
 
+try {
+  setLang(localStorage.getItem("agent_os_lang") || DEFAULT_LANG);
+} catch (e) { setLang(DEFAULT_LANG); }
+applyI18n();
 $("btn-connect").onclick = async () => { await connect(); refresh(); };
 $("btn-mission").onclick = async () => {
   const title = $("new-mission").value.trim();

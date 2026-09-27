@@ -118,6 +118,16 @@ English is the default; Persian is selectable and persistent. Use a message cata
 
 The approved spatial design shows Hermes as coordinator, agents as agents, tools as tools, projects as projects, containers as execution boundaries, and workflows as links or sequences—not interchangeable node types. A 2D shell always provides mission lists, approval queue, technical diffs, timeline, and fallback graph/list view. The 3D layer is progressive enhancement and must never be the only path to an approval. Avoid flashing; honor reduced-motion settings and provide a lightweight mode. Use connection, execution, and control statuses independently; do not encode status solely by color.
 
+> **Approved architectural direction; frontend migration not yet scheduled (2026-09-26):**
+> - The target frontend for the product is React + TypeScript.
+> - The approved futuristic, spatial dashboard may use React Three Fiber / Three.js as an optional visualization layer.
+> - Essential functions—including approvals, diffs, event history, project/tool settings, and language selection—must remain usable in a clear 2D interface without 3D.
+> - English is the default UI language; Persian is selectable and uses RTL. Technical content such as commands, file paths, and diffs must remain readable in LTR.
+> - Keep the existing Python control service as the backend baseline. Do not rewrite it in Rust or Mojo based only on an expectation of higher speed.
+> - Rust may be considered later for a narrowly scoped, measured performance bottleneck, with a benchmark and migration plan. Mojo is not selected for the product's core at this stage.
+> - UI responsiveness, event latency, and correctness of approval enforcement should be measured separately before proposing performance-related changes.
+> - **Phase 1 scope boundary:** Continue the already agreed Phase 1 task in the existing UI; do not replace it with a React migration or alter API contracts merely to adopt React.
+
 ## 7. Roadmap: one item at a time
 
 Each phase below identifies the **next single focus**. Do not parallelize phases merely to accelerate appearance. A phase may be broken into smaller one-item tasks. The next phase begins only when the owner's acceptance gate has passed.
@@ -225,6 +235,6 @@ Hermes should **not** begin coding the dashboard from this document. First execu
 - Precise installed Hermes/DSH versions and verified event/interception capabilities.
 - Runner image and boundaries for PHP/Node/Python projects; Docker Desktop networking and cross-boundary access.
 - Specific sensitive-file patterns, network allowlists, audit retention, backup schedule, and acceptable residual risks.
-- Preferred frontend framework and 3D engine after the 2D interaction model has passed usability checks.
+- [Resolved: React + TypeScript target; R3F/Three.js optional 3D layer; Python backend preserved] Scheduling of frontend migration post-Phase 1.
 
 **Success condition:** Agent OS earns the owner's daily trust through honest visibility and enforceable boundaries; its futuristic presentation makes that dependable experience delightful rather than hiding its limitations.
