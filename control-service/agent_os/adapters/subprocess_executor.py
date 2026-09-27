@@ -28,7 +28,13 @@ import time
 import uuid
 from pathlib import Path
 
-from ..models import Job, WorkerLostError, WorkerOutcome
+from ..models import (
+    CommandFormatError,
+    Job,
+    WorkerLostError,
+    WorkerOutcome,
+    decode_command,
+)
 
 
 class SubprocessExecutor:
@@ -55,14 +61,24 @@ class SubprocessExecutor:
         self.invocations: list[dict] = []
 
     def run(self, job: Job, attempt: int) -> WorkerOutcome:
-        # The job must carry a command in its title is NOT how we pass it;
-        # the command comes from an extra field carried on the job via
-        # workspace_paths convention is wrong. Instead, we read the command
-        # from the job's "actions" is wrong too. We require the caller to set
-        # job fields via the adapter config; here we read command from a
-        # dedicated job attribute if present, else fail closed.
-        command = getattr(job, "command", None)
-        if not command:
+        # The command is a canonical JSON argv string (see models.encode_command).
+        # decode_command re-checks the shape after parsing and raises
+        # CommandFormatError for anything unreadable - which is the migration
+        # path: a row written before this fix fails closed with a message an
+        # operator can act on, instead of handing Popen a string and dying with
+        # FileNotFoundError, or a dict and dying with TypeError.
+        try:
+            argv = decode_command(getattr(job, "command", None))
+        except CommandFormatError as e:
+            return WorkerOutcome(
+                status="completed_missing_evidence",
+                evidence={
+                    "error": f"unreadable stored command: {e}",
+                    "diff": "",
+                    "test_report": "",
+                },
+            )
+        if not argv:
             # Fail closed: a subprocess executor without a command must not
             # guess. Callers set job.command before dispatch.
             return WorkerOutcome(
@@ -74,6 +90,7 @@ class SubprocessExecutor:
                 },
             )
 
+        command = argv
         self.invocations.append({"job_id": job.id, "attempt": attempt, "command": command})
 
         # 1. Create a disposable copy of the source workspace. Use Path.mkdir

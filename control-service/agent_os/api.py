@@ -27,6 +27,7 @@ from .models import (
     Approval,
     ApprovalDecision,
     ApprovalScope,
+    CommandFormatError,
     DispatchRefused,
     Job,
     JobState,
@@ -35,6 +36,7 @@ from .models import (
     Principal,
     Project,
     ProjectRejected,
+    decode_command,
     utc_now,
 )
 from .logging_setup import get_logger, log_event
@@ -60,6 +62,15 @@ def _iso_or_none(value) -> Optional[str]:
 
 
 def _job_to_dict(job: Job) -> dict:
+    # `command` is stored as canonical JSON argv. Hand the caller back the argv
+    # they sent, not the storage encoding: the API accepts a list, so it should
+    # return a list. If the row predates the encoding fix and is unreadable,
+    # return the raw stored value rather than raising - listing a job must not
+    # 500 because of one bad column, and the raw value is still useful evidence.
+    try:
+        command = decode_command(job.command)
+    except CommandFormatError:
+        command = job.command
     return {
         "id": job.id,
         "mission_id": job.mission_id,
@@ -71,7 +82,7 @@ def _job_to_dict(job: Job) -> dict:
         "state": job.state.value,
         "attempt_no": job.attempt_no,
         "manifest_hash": job.manifest_hash,
-        "command": job.command,
+        "command": command,
         "created_at": job.created_at,
         "updated_at": job.updated_at,
     }

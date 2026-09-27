@@ -53,6 +53,7 @@ from .models import (
     ProjectRejected,
     WorkerLostError,
     WorkerOutcome,
+    encode_command,
     iso,
     utc_now,
 )
@@ -267,11 +268,18 @@ class ControlService:
         actions: tuple[str, ...],
         proposed_by: Principal,
         now: Optional[datetime] = None,
-        command: Optional[str] = None,
+        command: Optional[list] = None,
     ) -> Job:
         if proposed_by not in (Principal.PLANNER, Principal.HUMAN):
             raise PermissionError("proposals come from planner or human only")
         now = now or utc_now()
+        # Encode HERE, not at the HTTP edge. The HTTP layer validates the
+        # shape, but record_proposal is also called directly (tests, CLI,
+        # future adapters) and every one of those paths writes to the same TEXT
+        # column. Encoding at the single write boundary means no caller can
+        # put a list into sqlite and get a 500 from three frames down - which
+        # is exactly defect F8.
+        encoded = encode_command(command)
         job = Job(
             id=_new_id("job"),
             mission_id=mission_id,
@@ -285,7 +293,7 @@ class ControlService:
             manifest_hash="",
             created_at=iso(now),
             updated_at=iso(now),
-            command=command,
+            command=encoded,
         )
         job.manifest_hash = job.compute_manifest_hash()
         self.store.insert_job(job)
@@ -300,7 +308,7 @@ class ControlService:
         job_id: str,
         workspace_paths: Optional[tuple[str, ...]] = None,
         actions: Optional[tuple[str, ...]] = None,
-        command: Optional[str] = None,
+        command: Optional[list] = None,
     ) -> Job:
         """Amend a proposal. Recomputes the manifest hash, which INVALIDATES
         any existing grant bound to the old hash (checked at dispatch)."""
@@ -311,10 +319,15 @@ class ControlService:
             job.workspace_paths = tuple(workspace_paths)
         if actions is not None:
             job.actions = tuple(actions)
+        encoded = None
         if command is not None:
-            job.command = command
+            # Same reason as record_proposal: this is a write boundary.
+            encoded = encode_command(command)
+            job.command = encoded
         job.manifest_hash = job.compute_manifest_hash()
-        self.store.update_job(job_id, manifest_hash=job.manifest_hash, command=job.command)
+        self.store.update_job(
+            job_id, manifest_hash=job.manifest_hash, command=encoded
+        )
         self.store.record_event(
             "job_amended", {"job_id": job_id, "manifest_hash": job.manifest_hash}
         )

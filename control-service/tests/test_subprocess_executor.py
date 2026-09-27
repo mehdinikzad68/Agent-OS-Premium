@@ -16,6 +16,7 @@ from agent_os.models import (
     Job,
     JobState,
     Principal,
+    encode_command,
     utc_now,
 )
 from agent_os.service import ControlService
@@ -24,6 +25,11 @@ TMP = Path(__file__).resolve().parent.parent / ".testtmp"
 
 
 def _make_job(command=None, executor="subprocess-executor", actions=("run_tests",)):
+    # `command` here is an argv LIST, as callers naturally have it. The Job
+    # field itself holds the canonical JSON string, so encode on the way in.
+    # The alternative - letting tests pass a raw list and having the executor
+    # cope with both - would test a shape the service can never produce, since
+    # record_proposal always encodes before the row is written.
     job = Job(
         id="job-test",
         mission_id="mission-test",
@@ -37,7 +43,7 @@ def _make_job(command=None, executor="subprocess-executor", actions=("run_tests"
         manifest_hash="x",
         created_at="t",
         updated_at="t",
-        command=command,
+        command=encode_command(command),
     )
     return job
 

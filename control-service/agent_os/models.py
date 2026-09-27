@@ -2,7 +2,7 @@
 
 Authority split (AGENT-OS-HANDOFF.md section 7):
 - PLANNER (e.g. Hermes) may only propose.
-- HUMAN is the only principal that may decide approvals.
+- HUMAN is the only principal that may decide approvals (no self-approval).
 - WORKER (e.g. DSH) only executes what dispatch hands it.
 - The deterministic service is the only writer of authoritative state.
 """
@@ -17,12 +17,86 @@ from enum import Enum
 from typing import Optional
 
 
+class CommandFormatError(ValueError):
+    """The stored `command` is not a readable canonical JSON argv array.
+
+    Raised instead of letting a json/TypeError escape, because a row written by
+    an older build may hold anything at all. Callers must fail closed on it.
+    """
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
 def iso(dt: datetime) -> str:
     return dt.isoformat()
+
+
+def encode_command(argv: Optional[list]) -> Optional[str]:
+    """Serialize an argv list to the canonical JSON string stored in the DB.
+
+    Why a JSON string and not a joined command line: the column is TEXT and
+    sqlite refuses to bind a list, while `shell=False` Popen refuses anything
+    that is not a list. A canonical JSON string is the one representation that
+    satisfies the storage layer without inventing a quoting/parsing rule, and
+    it is stable enough to hash - which is what the Phase 5 requirement
+    ("changing a parameter requires a fresh approval") needs.
+
+    Canonical means separators=(",", ":") with no spaces, so the same argv
+    always produces byte-identical output and therefore a stable manifest
+    hash. ensure_ascii=False keeps non-ASCII arguments readable; it does not
+    affect determinism because the input str is the same either way.
+
+    None in, None out: an absent command stays absent, so the executor's own
+    fail-closed path (not a decode error) is what reports it.
+    """
+    if argv is None:
+        return None
+    if not isinstance(argv, list):
+        raise TypeError(
+            f"encode_command expects a list or None; got {type(argv).__name__}"
+        )
+    return json.dumps(argv, separators=(",", ":"), ensure_ascii=False)
+
+
+def decode_command(stored: Optional[str]) -> Optional[list]:
+    """Parse a stored `command` back into argv, or raise CommandFormatError.
+
+    The migration contract: a row written before this fix may hold a value
+    json.loads cannot read. That is not an internal error, it is a refusal, so
+    it gets a named exception with a message an operator can act on rather
+    than a traceback from three frames down.
+
+    Shape is re-checked here, not merely parsed. `json.loads("1")` succeeds
+    and would hand Popen an int; `json.loads('"echo hi"')` succeeds and would
+    make Popen raise FileNotFoundError. Parsing is not validation.
+    """
+    if stored is None:
+        return None
+    if not isinstance(stored, str):
+        raise CommandFormatError(
+            f"stored command must be a JSON string; got {type(stored).__name__}"
+        )
+    try:
+        value = json.loads(stored)
+    except (ValueError, TypeError) as e:
+        raise CommandFormatError(
+            f"stored command is not valid JSON ({type(e).__name__}); "
+            "re-propose the job to rewrite it"
+        ) from e
+    if not isinstance(value, list) or not value:
+        raise CommandFormatError(
+            "stored command must be a non-empty JSON array of strings; "
+            f"got {type(value).__name__}"
+        )
+    for i, part in enumerate(value):
+        if not isinstance(part, str) or not part.strip():
+            raise CommandFormatError(
+                f"stored command[{i}] must be a non-empty string; "
+                f"got {type(part).__name__}"
+            )
+    return list(value)
 
 
 class Principal(str, Enum):
@@ -82,9 +156,11 @@ class Job:
     manifest_hash: str
     created_at: str
     updated_at: str
-    # Optional concrete command for executors that need one (e.g. the
-    # subprocess executor). Included in the manifest hash: changing it
-    # invalidates any existing grant (a new decision is required).
+    # Concrete command for executors that need one (e.g. the subprocess
+    # executor), stored as a canonical JSON argv string - see encode_command.
+    # Included in the manifest hash: changing it invalidates any existing
+    # grant (a new decision is required). Callers pass an argv LIST and the
+    # service encodes it; do not hand-build this string.
     command: Optional[str] = None
 
     def compute_manifest_hash(self) -> str:
