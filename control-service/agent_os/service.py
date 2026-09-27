@@ -168,6 +168,14 @@ class ControlService:
     def list_projects(self) -> list[Project]:
         return self.store.list_projects()
 
+    def remove_project(self, project_id: str) -> bool:
+        """Forget a project. Returns False when the id was unknown."""
+        removed = self.store.delete_project(project_id)
+        if removed:
+            self.store.record_event("project_removed", {"project_id": project_id})
+            log_event(_log, logging.INFO, "project.removed", project_id=project_id)
+        return removed
+
     def register_project(
         self,
         name: str,
@@ -187,6 +195,8 @@ class ControlService:
         if scope is None:
             scope = project_scope()
         if scope is None:
+            log_event(_log, logging.WARNING, "project.rejected",
+                      reason=REASON_SCOPE_UNSET, root=root[:200])
             raise ProjectRejected(
                 REASON_SCOPE_UNSET,
                 f"set {PROJECT_SCOPE_ENV} to the directory projects may live in",
@@ -194,10 +204,14 @@ class ControlService:
 
         lexical = check_project_root(root, scope, environment)
         if not lexical.ok:
+            log_event(_log, logging.WARNING, "project.rejected",
+                      reason=lexical.reason, root=root[:200])
             raise ProjectRejected(lexical.reason, f"refused {root!r}: {lexical.reason}")
 
         disk = inspect_root(root, scope, environment)
         if not disk.ok:
+            log_event(_log, logging.WARNING, "project.rejected",
+                      reason=disk.reason, root=root[:200])
             raise ProjectRejected(disk.reason, f"refused {root!r}: {disk.reason}")
 
         project = self.store.create_project(
@@ -208,6 +222,8 @@ class ControlService:
             is_symlink=disk.is_symlink,
         )
         if project is None:
+            log_event(_log, logging.WARNING, "project.rejected",
+                      reason="duplicate", root=disk.canonical)
             raise ProjectRejected(
                 "duplicate", f"{environment}:{disk.canonical} is already registered"
             )
@@ -215,6 +231,11 @@ class ControlService:
             "project_registered",
             {"project_id": project.id, "name": name, "root": disk.canonical,
              "is_symlink": disk.is_symlink},
+        )
+        log_event(
+            _log, logging.INFO, "project.registered",
+            project_id=project.id, project_name=name[:120], root=disk.canonical,
+            is_symlink=disk.is_symlink,
         )
         return project
 

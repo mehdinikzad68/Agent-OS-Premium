@@ -165,6 +165,8 @@ class AgentOSApi:
                 return self._get(path)
             if method == "POST":
                 return self._post(path, body or {})
+            if method == "DELETE":
+                return self._delete(path)
             raise ApiError(405, "method_not_allowed", f"method {method} not allowed")
         except ApiError as e:
             return e.status, {"error": {"code": e.code, "message": e.message}}
@@ -245,6 +247,14 @@ class AgentOSApi:
             return 200, self._job_public(self._reconcile(path.split("/")[3], body))
         raise ApiError(404, "not_found", f"unknown route: {path}")
 
+    # -- DELETE ---------------------------------------------------------------
+
+    def _delete(self, path: str) -> tuple[int, object]:
+        p = path.strip("/").split("/")
+        if path.startswith("/api/projects/"):
+            return 200, self._remove_project(p[2])
+        raise ApiError(404, "not_found", f"unknown route: {path}")
+
     # -- action implementations -------------------------------------------
 
     def _propose(self, body: dict) -> Job:
@@ -304,6 +314,11 @@ class AgentOSApi:
         final_state = JobState(self._require_str(body, "final_state"))
         note = self._require_str(body, "note")
         return self.service.reconcile(job_id, final_state, Principal.HUMAN, note)
+
+    def _remove_project(self, project_id: str) -> dict:
+        if not self.service.remove_project(project_id):
+            raise ApiError(404, "not_found", "project not found")
+        return {"removed": True}
 
     # -- read helpers --------------------------------------------------------
 
@@ -499,6 +514,9 @@ def make_handler(api: AgentOSApi, token: Optional[str]) -> type[BaseHTTPRequestH
 
         def do_POST(self):  # noqa: N802
             self._timed("POST")
+
+        def do_DELETE(self):  # noqa: N802
+            self._timed("DELETE")
 
         def log_message(self, fmt, *args):  # noqa: A003 - BaseHTTPRequestHandler API
             # Silent on purpose. The framework access line duplicates
