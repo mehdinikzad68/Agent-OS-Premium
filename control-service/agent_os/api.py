@@ -257,6 +257,41 @@ class AgentOSApi:
 
     # -- action implementations -------------------------------------------
 
+    def _require_command(self, value: object) -> list[str] | None:
+        """Validate `command` at the edge, where a refusal is still cheap.
+
+        None is allowed and means "no command": the subprocess executor fails
+        closed on that, with a message asking the caller to set one. Anything
+        present must be argv - a non-empty list of non-empty strings - because
+        that is the only shape Popen accepts without a shell.
+
+        Previously this was passed through unvalidated, so a caller could put a
+        string, an int or a dict in the body and get a TypeError or a
+        FileNotFoundError from deep inside the executor - a 500 for what is
+        plainly a bad request, raised by the wrong layer. models.py annotates
+        the field as Optional[str]; that annotation is not enforced anywhere
+        and is not the shape that works, so it documented an intent rather than
+        a constraint. Validating here is what actually constrains it.
+        """
+        if value is None:
+            return None
+        if not isinstance(value, list) or not value:
+            raise ApiError(
+                400,
+                "command_not_a_list",
+                "command must be a non-empty list of strings (argv), "
+                f"or omitted; got {type(value).__name__}",
+            )
+        for i, part in enumerate(value):
+            if not isinstance(part, str) or not part.strip():
+                raise ApiError(
+                    400,
+                    "command_not_a_list",
+                    f"command[{i}] must be a non-empty string; got "
+                    f"{type(part).__name__}",
+                )
+        return list(value)
+
     def _propose(self, body: dict) -> Job:
         mission_id = self._require_str(body, "mission_id")
         title = self._require_str(body, "title")
@@ -264,7 +299,7 @@ class AgentOSApi:
         workspace_paths = tuple(self._require_list(body, "workspace_paths"))
         actions = tuple(self._require_list(body, "actions"))
         proposed_by = Principal(body.get("proposed_by", "planner"))
-        command = body.get("command")
+        command = self._require_command(body.get("command"))
         return self.service.record_proposal(
             mission_id, title, executor, workspace_paths, actions, proposed_by,
             command=command,

@@ -91,6 +91,39 @@ def cmd_serve(args) -> int:
             f"subprocess executor ENABLED (source={args.source_workspace}, "
             f"timeout={args.subprocess_timeout}s, sandbox_root={sandbox_root})"
         )
+        # The bypass, stated rather than implied. Without this line the log
+        # says the executor is on and says nothing about what is NOT stopping
+        # the command, and the next maintainer reasonably assumes the approval
+        # system is on the path. It is not. dispatch() never reads an approval.
+        # Phase 5 builds that gate; until then this is the declaration the
+        # roadmap's Phase 5 exit criterion asks for.
+        bypass = (
+            "  WARNING: the dispatch path has NO approval gate. Any command "
+            "passed in POST /api/jobs runs on the next\n"
+            "           POST /api/jobs/<id>/dispatch. Approval enforcement is "
+            "Phase 5 and is not implemented.\n"
+            "           Also unbounded: the child may write outside the "
+            "sandbox, and a timeout\n"
+            "           kills only the direct child, not its grandchildren. "
+            "The working copy\n"
+            "           is not a security boundary."
+        )
+        print(bypass)
+        # Same fact as a structured event, so it is queryable later and not
+        # lost with the terminal. Recorded once at startup because the state
+        # is a property of the running process, not of any one request.
+        log_event(
+            _log,
+            logging.WARNING,
+            "executor.bypass_declared",
+            executor="subprocess-executor",
+            source_workspace=str(args.source_workspace),
+            sandbox_root=str(sandbox_root),
+            approval_gate=False,
+            approval_gate_planned_phase=5,
+            writes_bounded=False,
+            timeout_kills_process_group=False,
+        )
 
     server = serve(service, host=args.host, port=args.port, token=token, insecure=args.insecure)
     host, port = server.server_address[:2]
