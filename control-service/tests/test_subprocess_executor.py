@@ -57,6 +57,24 @@ class SubprocessExecutorTest(unittest.TestCase):
             sandbox_root=self.sandbox_root,
         )
 
+    def test_the_default_sandbox_root_does_not_crash(self):
+        """The documented default is `None` -> the system temp dir, so
+        omitting sandbox_root is a supported call, not an exotic one.
+
+        It was broken: line 52 read `tempfile.gettempdir()` with no
+        `import tempfile`, so the default raised NameError. Every existing
+        test passed sandbox_root explicitly and the CLI does too, so the whole
+        suite was green over a crash."""
+        executor = SubprocessExecutor(self.src)
+        self.assertTrue(executor.sandbox_root.is_dir(),
+                        f"the default root should have been created, got "
+                        f"{executor.sandbox_root}")
+
+    def test_an_explicit_sandbox_root_still_wins(self):
+        """The fix must not change the branch that already worked."""
+        executor = SubprocessExecutor(self.src, sandbox_root=self.sandbox_root)
+        self.assertEqual(executor.sandbox_root, self.sandbox_root)
+
     def test_no_command_fails_closed_unverified(self):
         """Without a command, the executor must not guess: result is unverified."""
         job = _make_job(command=None)
