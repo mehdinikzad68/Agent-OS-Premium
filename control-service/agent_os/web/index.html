@@ -142,11 +142,52 @@ const I18N = {
     "app.title": "Agent OS — Mission Control",
     "conn.connecting": "Connecting…",
     "conn.connected": "Connected ✅",
-    "conn.error": "Error: ",
     "conn.needToken": "Enter your token",
     "auth.tokenPlaceholder": "Access token (Bearer)",
     "auth.connect": "Connect",
     "sys.status": "System status",
+    "sys.version": "Version:",
+    "sys.executors": "Executors:",
+    "sys.none": "none",
+    "sys.db": "Database:",
+    "mission.activate": "Activate",
+    "mission.newJob": "+ New job",
+    "job.attempt": "attempt",
+    "job.requestApproval": "Request approval",
+    "job.dispatch": "Dispatch job",
+    "job.reconcile": "Reconcile manually",
+    "job.awaitingHuman": "Waiting for a human decision \u2014 approve or reject it in Approvals",
+    "job.evidence": "Recorded evidence",
+    "job.eventNo": "event",
+    "job.reportStatus": "Report status:",
+    "job.testReport": "Test report",
+    "job.noTestReport": "(no test report)",
+    "job.diff": "Diff / output",
+    "job.noEvidence": "No evidence recorded",
+    "job.evidenceFailed": "Evidence fetch failed:",
+    "job.executor": "executor",
+    "job.command": "Command:",
+    "job.paths": "Paths:",
+    "job.actions": "Actions:",
+    "toast.missionCreated": "Mission created",
+    "toast.missionActivated": "Mission activated",
+    "toast.approvalRequested": "Approval requested",
+    "toast.dispatchResult": "Result: ",
+    "toast.reconciled": "Reconciled",
+    "toast.jobProposed": "Job recorded and approval requested",
+    "toast.approved": "Approved",
+    "toast.denied": "Rejected",
+    "err.prefix": "Error: ",
+    "prompt.finalState": "Final state (failed / completed_verified / completed_unverified):",
+    "reconcile.note": "Manual reconcile",
+    "prompt.jobTitle": "Job title:",
+    "prompt.executor": "executor (default fake-executor):",
+    "prompt.actions": "actions, comma separated (default read_file,run_tests):",
+    "approvals.none": "No pending approvals",
+    "approvals.forJob": "Approval for job",
+    "approvals.grant": "Approve",
+    "approvals.reject": "Reject",
+    "feed.empty": "No events",
     "mission.new": "New mission",
     "mission.titlePlaceholder": "Mission title",
     "mission.create": "Create",
@@ -164,11 +205,52 @@ const I18N = {
     "app.title": "Agent OS — Mission Control",
     "conn.connecting": "اتصال…",
     "conn.connected": "متصل ✅",
-    "conn.error": "خطا: ",
     "conn.needToken": "توکن را وارد کنید",
     "auth.tokenPlaceholder": "توکن دسترسی (Bearer)",
     "auth.connect": "اتصال",
     "sys.status": "وضعیت سیستم",
+    "sys.version": "نسخه:",
+    "sys.executors": "executorها:",
+    "sys.none": "هیچ",
+    "sys.db": "پایگاه داده:",
+    "mission.activate": "فعال‌سازی",
+    "mission.newJob": "+ کار جدید",
+    "job.attempt": "تلاش",
+    "job.requestApproval": "درخواست تأیید",
+    "job.dispatch": "اجرای کار (dispatch)",
+    "job.reconcile": "تسویه دستی (reconcile)",
+    "job.awaitingHuman": "در انتظار تصمیم انسان — در «صندوق تأییدها» تأیید یا رد کنید",
+    "job.evidence": "شواهد ثبت‌شده",
+    "job.eventNo": "رویداد",
+    "job.reportStatus": "وضعیت گزارش:",
+    "job.testReport": "گزارش تست",
+    "job.noTestReport": "(بدون گزارش تست)",
+    "job.diff": "تفاوت / خروجی (diff)",
+    "job.noEvidence": "شواهدی ثبت نشده",
+    "job.evidenceFailed": "دریافت شواهد ناموفق:",
+    "job.executor": "executor",
+    "job.command": "دستور:",
+    "job.paths": "مسیرها:",
+    "job.actions": "ابزارها:",
+    "toast.missionCreated": "مأموریت ایجاد شد",
+    "toast.missionActivated": "مأموریت فعال شد",
+    "toast.approvalRequested": "درخواست تأیید ثبت شد",
+    "toast.dispatchResult": "نتیجه: ",
+    "toast.reconciled": "تسویه شد",
+    "toast.jobProposed": "کار ثبت شد و درخواست تأیید داده شد",
+    "toast.approved": "تأیید شد",
+    "toast.denied": "رد شد",
+    "err.prefix": "خطا: ",
+    "prompt.finalState": "وضعیت نهایی (failed / completed_verified / completed_unverified):",
+    "reconcile.note": "تسویه دستی",
+    "prompt.jobTitle": "عنوان کار:",
+    "prompt.executor": "executor (پیش‌فرض fake-executor):",
+    "prompt.actions": "actions با کاما (پیش‌فرض read_file,run_tests):",
+    "approvals.none": "هیچ تأیید معلقی نیست",
+    "approvals.forJob": "تأیید برای کار",
+    "approvals.grant": "تأیید",
+    "approvals.reject": "رد",
+    "feed.empty": "بدون رویداد",
     "mission.new": "ثبت مأموریت جدید",
     "mission.titlePlaceholder": "عنوان مأموریت",
     "mission.create": "ایجاد",
@@ -196,6 +278,10 @@ function t(key) {
   return key;
 }
 
+// Set once the first successful refresh has put data on screen. Until then
+// a language switch has nothing to re-render and must not make a request.
+let DATA_ON_SCREEN = false;
+
 // Sets the document language and writing direction for the active language.
 // Persian is RTL; English is LTR. Technical blocks (feed/diff/code) keep their
 // own LTR direction via CSS and are intentionally not affected here.
@@ -204,6 +290,8 @@ function t(key) {
    without a page reload. */
 function applyI18n(root) {
   const scope = root || document;
+  // The <title> element cannot carry data-i18n, so drive it from the catalog.
+  document.title = t("app.title");
   scope.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n");
     if (key) el.textContent = t(key);
@@ -226,6 +314,12 @@ function setLang(lang) {
   document.documentElement.dir = LANG === "fa" ? "rtl" : "ltr";
   try { localStorage.setItem("agent_os_lang", LANG); } catch (e) { /* private mode */ }
   if (typeof applyI18n === "function") applyI18n();
+  // applyI18n only reaches [data-i18n] hooks. Every runtime panel is built
+  // with innerHTML from JS, so those keep the previous language until the
+  // data is re-rendered from the server.
+  if (DATA_ON_SCREEN && typeof refresh === "function") {
+    try { refresh(); } catch (e) { /* refresh reports its own failures */ }
+  }
   return LANG;
 }
 
@@ -325,9 +419,9 @@ async function connect() {
   localStorage.setItem("agent_os_token", TOKEN);
   try {
     await api("GET", "/api/status");
-    $("conn").textContent = "متصل ✅"; $("conn").style.color = "var(--ok)";
+    $("conn").textContent = t("conn.connected"); $("conn").style.color = "var(--ok)";
   } catch (e) {
-    $("conn").textContent = "خطا: " + e.message; $("conn").style.color = "var(--bad)";
+    $("conn").textContent = t("err.prefix") + e.message; $("conn").style.color = "var(--bad)";
     throw e;
   }
 }
@@ -335,9 +429,9 @@ async function connect() {
 async function loadStatus() {
   const s = await api("GET", "/api/status");
   $("status").innerHTML = `
-    <div><b>نسخه:</b> ${s.version}</div>
-    <div><b>executorها:</b> ${(s.executors||[]).join(", ") || "هیچ"}</div>
-    <div><b>پایگاه داده:</b> <span class="muted">${s.db_path}</span></div>`;
+    <div><b>${t("sys.version")}</b> ${s.version}</div>
+    <div><b>${t("sys.executors")}</b> ${(s.executors||[]).join(", ") || t("sys.none")}</div>
+    <div><b>${t("sys.db")}</b> <span class="muted">${s.db_path}</span></div>`;
 }
 
 async function loadMissions() {
@@ -359,8 +453,8 @@ async function loadMissionDetail(id) {
     <div class="row-inline"><b>${m.title}</b> ${badge(m.state)}
       <span class="muted">${m.id}</span></div>
     <div class="row-inline" style="margin-top:6px">
-      <button id="btn-activate" class="primary">فعال‌سازی</button>
-      <button id="btn-new-job">+ کار جدید</button>
+      <button id="btn-activate" class="primary">${t("mission.activate")}</button>
+      <button id="btn-new-job">${t("mission.newJob")}</button>
     </div>`;
   $("btn-activate") && ($("btn-activate").onclick = () => activateMission(id));
   $("btn-new-job") && ($("btn-new-job").onclick = () => newJobPrompt(id));
@@ -376,7 +470,7 @@ async function loadJobs(missionId) {
     const div = document.createElement("div");
     div.className = "item";
     div.innerHTML = `<div class="t">${j.title}</div>
-      <div class="m">${badge(j.state)} · ${j.executor} · تلاش ${j.attempt_no}</div>`;
+      <div class="m">${badge(j.state)} · ${j.executor} · ${t("job.attempt")} ${j.attempt_no}</div>`;
     div.onclick = () => showJob(j);
     el.appendChild(div);
   });
@@ -385,23 +479,23 @@ async function loadJobs(missionId) {
 function showJob(j) {
   selectedJob = j;
   $("job-card").style.display = "block";
-  renderJobDetail(j.id).catch((e) => toast("خطا: " + e.message));
+  renderJobDetail(j.id).catch((e) => toast(t("err.prefix") + e.message));
 }
 
 async function renderJobDetail(jobId) {
   const j = await api("GET", "/api/jobs/" + jobId);
   const actions = [];
   if (j.state === "proposed") {
-    actions.push(`<button class="primary" onclick="requestApproval('${j.id}')">درخواست تأیید</button>`);
+    actions.push(`<button class="primary" onclick="requestApproval('${j.id}')">${t("job.requestApproval")}</button>`);
   }
   if (j.state === "approved") {
-    actions.push(`<button class="primary" onclick="dispatchJob('${j.id}')">اجرای کار (dispatch)</button>`);
+    actions.push(`<button class="primary" onclick="dispatchJob('${j.id}')">${t("job.dispatch")}</button>`);
   }
   if (j.state === "interrupted_unknown") {
-    actions.push(`<button class="bad" onclick="reconcileJob('${j.id}')">تسویه دستی (reconcile)</button>`);
+    actions.push(`<button class="bad" onclick="reconcileJob('${j.id}')">${t("job.reconcile")}</button>`);
   }
   if (j.state === "awaiting_approval") {
-    actions.push(`<span class="muted">در انتظار تصمیم انسان — در «صندوق تأییدها» تأیید یا رد کنید</span>`);
+    actions.push(`<span class="muted">${t("job.awaitingHuman")}</span>`);
   }
 
   let evidenceHtml = "";
@@ -410,17 +504,17 @@ async function renderJobDetail(jobId) {
       const ev = await api("GET", `/api/jobs/${j.id}/evidence`);
       if (ev.evidence) {
         evidenceHtml = `
-          <h2 style="margin-top:12px">شواهد ثبت‌شده (event #${ev.event_seq})</h2>
-          <div class="muted">وضعیت گزارش: ${escapeHtml(ev.kind)}</div>
-          <h2 style="margin-top:8px">گزارش تست</h2>
-          <pre class="detail">${escapeHtml(ev.evidence.test_report) || "(بدون گزارش تست)"}</pre>
-          <h2 style="margin-top:8px">تفاوت / خروجی (diff)</h2>
+          <h2 style="margin-top:12px">${t("job.evidence")} (${t("job.eventNo")} #${ev.event_seq})</h2>
+          <div class="muted">${t("job.reportStatus")} ${escapeHtml(ev.kind)}</div>
+          <h2 style="margin-top:8px">${t("job.testReport")}</h2>
+          <pre class="detail">${escapeHtml(ev.evidence.test_report) || t("job.noTestReport")}</pre>
+          <h2 style="margin-top:8px">${t("job.diff")}</h2>
           <pre class="detail">${escapeHtml(ev.evidence.diff)}</pre>`;
       } else {
-        evidenceHtml = `<div class="muted" style="margin-top:8px">${escapeHtml(ev.note || "شواهدی ثبت نشده")}</div>`;
+        evidenceHtml = `<div class="muted" style="margin-top:8px">${escapeHtml(ev.note || t("job.noEvidence"))}</div>`;
       }
     } catch (e) {
-      evidenceHtml = `<div class="muted" style="margin-top:8px">دریافت شواهد ناموفق: ${escapeHtml(e.message)}</div>`;
+      evidenceHtml = `<div class="muted" style="margin-top:8px">${t("job.evidenceFailed")} ${escapeHtml(e.message)}</div>`;
     }
   }
 
@@ -428,12 +522,12 @@ async function renderJobDetail(jobId) {
     <div class="row-inline"><b>${escapeHtml(j.title)}</b> ${badge(j.state)}
       <span class="muted">${escapeHtml(j.id)}</span></div>
     <div class="muted" style="margin-top:6px">
-      executor: ${escapeHtml(j.executor)} · تلاش: ${j.attempt_no} ·
+      ${t("job.executor")}: ${escapeHtml(j.executor)} · ${t("job.attempt")}: ${j.attempt_no} ·
       manifest: <code>${escapeHtml(String(j.manifest_hash).slice(0, 12))}…</code>
     </div>
-    <div class="muted">دستور: ${escapeHtml(j.command) || "—"}</div>
-    <div class="muted">مسیرها: ${escapeHtml((j.workspace_paths || []).join(", "))} ·
-      ابزارها: ${escapeHtml((j.actions || []).join(", "))}</div>
+    <div class="muted">${t("job.command")} ${escapeHtml(j.command) || "—"}</div>
+    <div class="muted">${t("job.paths")} ${escapeHtml((j.workspace_paths || []).join(", "))} ·
+      ${t("job.actions")} ${escapeHtml((j.actions || []).join(", "))}</div>
     <div class="row-inline" style="margin-top:10px">${actions.join("")}</div>
     ${evidenceHtml}`;
 }
@@ -441,39 +535,39 @@ async function renderJobDetail(jobId) {
 async function requestApproval(jobId) {
   try {
     await api("POST", "/api/approvals", { job_id: jobId });
-    toast("درخواست تأیید ثبت شد"); refresh();
-  } catch (e) { toast("خطا: " + e.message); }
+    toast(t("toast.approvalRequested")); refresh();
+  } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
 async function activateMission(id) {
   try {
     await api("POST", "/api/missions/" + id + "/activate");
-    toast("مأموریت فعال شد"); refresh();
-  } catch (e) { toast("خطا: " + e.message); }
+    toast(t("toast.missionActivated")); refresh();
+  } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
 async function dispatchJob(jobId) {
   try {
     const r = await api("POST", "/api/jobs/" + jobId + "/dispatch");
-    toast("نتیجه: " + r.receipt.final_state);
+    toast(t("toast.dispatchResult") + r.receipt.final_state);
     refresh();
-  } catch (e) { toast("خطا: " + e.message); }
+  } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
 async function reconcileJob(jobId) {
-  const state = prompt("وضعیت نهایی (failed / completed_verified / completed_unverified):", "failed");
+  const state = prompt(t("prompt.finalState"), "failed");
   if (!state) return;
   try {
-    await api("POST", "/api/jobs/" + jobId + "/reconcile", { final_state: state, note: "تسویه دستی" });
-    toast("تسویه شد"); refresh();
-  } catch (e) { toast("خطا: " + e.message); }
+    await api("POST", "/api/jobs/" + jobId + "/reconcile", { final_state: state, note: t("reconcile.note") });
+    toast(t("toast.reconciled")); refresh();
+  } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
 function newJobPrompt(missionId) {
-  const title = prompt("عنوان کار:");
+  const title = prompt(t("prompt.jobTitle"));
   if (!title) return;
-  const executor = prompt("executor (پیش‌فرض fake-executor):", "fake-executor");
-  const actions = prompt("actions با کاما (پیش‌فرض read_file,run_tests):", "read_file,run_tests");
+  const executor = prompt(t("prompt.executor"), "fake-executor");
+  const actions = prompt(t("prompt.actions"), "read_file,run_tests");
   propose(missionId, title, executor, actions.split(",").map(s=>s.trim()));
 }
 
@@ -486,9 +580,9 @@ async function propose(missionId, title, executor, actions) {
     });
     // auto-request approval
     const a = await api("POST", "/api/approvals", { job_id: j.id });
-    toast("کار ثبت شد و درخواست تأیید داده شد");
+    toast(t("toast.jobProposed"));
     refresh();
-  } catch (e) { toast("خطا: " + e.message); }
+  } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
 async function loadApprovals() {
@@ -496,15 +590,15 @@ async function loadApprovals() {
   const el = $("approvals");
   el.innerHTML = "";
   const pending = (d.approvals || []).filter((a) => a.decision === "requested");
-  if (pending.length === 0) { el.innerHTML = '<div class="muted">هیچ تأیید معلقی نیست</div>'; return; }
+  if (pending.length === 0) { el.innerHTML = `<div class="muted">${t("approvals.none")}</div>`; return; }
   pending.forEach((a) => {
     const div = document.createElement("div");
     div.className = "item";
-    div.innerHTML = `<div class="t">تأیید برای کار <span class="muted">${a.job_id}</span></div>
+    div.innerHTML = `<div class="t">${t("approvals.forJob")} <span class="muted">${a.job_id}</span></div>
       <div class="m">scope: ${a.scope.executor} · ${(a.scope.actions||[]).join(", ")}</div>
       <div class="row-inline" style="margin-top:6px">
-        <button class="ok" onclick="decide('${a.id}','granted')">تأیید</button>
-        <button class="bad" onclick="decide('${a.id}','denied')">رد</button>
+        <button class="ok" onclick="decide('${a.id}','granted')">${t("approvals.grant")}</button>
+        <button class="bad" onclick="decide('${a.id}','denied')">${t("approvals.reject")}</button>
       </div>`;
     el.appendChild(div);
   });
@@ -513,9 +607,9 @@ async function loadApprovals() {
 async function decide(approvalId, decision) {
   try {
     await api("POST", "/api/approvals/" + approvalId + "/decide", { decision });
-    toast(decision === "granted" ? "تأیید شد" : "رد شد");
+    toast(decision === "granted" ? t("toast.approved") : t("toast.denied"));
     refresh();
-  } catch (e) { toast("خطا: " + e.message); }
+  } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
 async function loadFeed() {
@@ -525,16 +619,17 @@ async function loadFeed() {
   (d.events || []).slice().reverse().forEach((e) => {
     const div = document.createElement("div");
     div.className = "row";
-    const ts = new Date(e.ts).toLocaleTimeString("fa-IR");
+    const ts = new Date(e.ts).toLocaleTimeString(localeFor());
     div.innerHTML = `<span class="ts">${ts}</span><span class="seq">#${e.seq}</span> <span class="kind">${e.kind}</span>`;
     el.appendChild(div);
   });
-  if (!el.children.length) el.innerHTML = '<div class="muted">بدون رویداد</div>';
+  if (!el.children.length) el.innerHTML = `<div class="muted">${t("feed.empty")}</div>`;
 }
 
 async function refresh() {
   try {
     await Promise.all([loadStatus(), loadMissions(), loadApprovals(), loadFeed()]);
+    DATA_ON_SCREEN = true;
     if (selectedMission) loadMissionDetail(selectedMission.id);
     if (selectedJob) {
       renderJobDetail(selectedJob.id).catch((e) =>
@@ -560,8 +655,8 @@ $("btn-connect").onclick = async () => { await connect(); refresh(); };
 $("btn-mission").onclick = async () => {
   const title = $("new-mission").value.trim();
   if (!title) return;
-  try { await api("POST", "/api/missions", { title }); $("new-mission").value = ""; toast("مأموریت ایجاد شد"); refresh(); }
-  catch (e) { toast("خطا: " + e.message); }
+  try { await api("POST", "/api/missions", { title }); $("new-mission").value = ""; toast(t("toast.missionCreated")); refresh(); }
+  catch (e) { toast(t("err.prefix") + e.message); }
 };
 
 (async () => {
@@ -572,7 +667,7 @@ $("btn-mission").onclick = async () => {
       uiLog("error", "initial load failed", { detail: _errText(e) });
     }
   }
-  else { $("conn").textContent = "توکن را وارد کنید"; }
+  else { $("conn").textContent = t("conn.needToken"); }
   setInterval(() => { if (TOKEN) refresh(); }, 4000);
 })();
 </script>

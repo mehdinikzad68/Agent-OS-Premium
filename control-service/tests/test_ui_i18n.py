@@ -189,5 +189,124 @@ class UiI18nTest(unittest.TestCase):
         )
 
 
+    # -- step 2-p: runtime strings go through t() ------------------------
+
+    def _script(self) -> str:
+        m = re.search(r"<script>([\s\S]*?)</script>", self.html)
+        self.assertIsNotNone(m, "no <script> block found")
+        return m.group(1)
+
+    def _catalog_span(self, js: str) -> tuple[int, int]:
+        """Line range of the inline catalog, so it can be excluded."""
+        lines = js.split("\n")
+        start = next(
+            (i for i, l in enumerate(lines) if l.startswith("const I18N = {")), -1
+        )
+        self.assertNotEqual(start, -1, "const I18N not found")
+        end = next(
+            (i for i, l in enumerate(lines[start:], start) if l.strip() == "};"), -1
+        )
+        self.assertNotEqual(end, -1, "end of const I18N not found")
+        return start, end
+
+    def test_no_persian_literal_outside_the_catalog(self):
+        """Assert the whole file is free of hard-coded Persian but in I18N.
+
+        This is the actual deliverable of step 2-p: 48 JS-generated strings
+        were Persian literals. A new one would silently be English-only.
+        """
+        js = self._script()
+        start, end = self._catalog_span(js)
+        persian = re.compile(r"[\u0600-\u06FF]")
+        offenders = [
+            (i + 1, line.strip())
+            for i, line in enumerate(js.split("\n"))
+            if persian.search(line) and not (start <= i <= end)
+        ]
+        self.assertEqual(
+            offenders, [], f"Persian outside the catalog: {offenders[:5]}"
+        )
+
+    def test_every_t_key_exists_in_both_catalogs(self):
+        """Assert t() is never called with an unknown key.
+
+        t() falls back to the key name itself, so a typo would show up in the
+        UI as raw dotted identifiers rather than as a failing test.
+        """
+        js = self._script()
+        start, end = self._catalog_span(js)
+        code = "\n".join(js.split("\n")[:start] + js.split("\n")[end + 1:])
+        # (?<![A-Za-z0-9_$.]) keeps createElement("div") and join(", ")
+        # out: both end in `t("` and would otherwise look like real keys.
+        used = set(re.findall(r'(?<![A-Za-z0-9_$.])t\("([^"]+)"\)', code))
+        self.assertGreater(len(used), 30, "t() barely used - hooks are stale")
+        for lang in ("en", "fa"):
+            missing = sorted(used - set(_catalog(self.html, lang)))
+            self.assertEqual(
+                missing, [], f"t() keys missing from {lang} catalog: {missing}"
+            )
+
+    def test_every_catalog_key_is_reachable(self):
+        """Assert no dead key: each one is a hook or a t() call.
+
+        Guards against a key that was superseded but left behind, which is
+        what a dead `conn.error` looked like after 2-p.
+        """
+        js = self._script()
+        start, end = self._catalog_span(js)
+        code = "\n".join(js.split("\n")[:start] + js.split("\n")[end + 1:])
+        used = set(re.findall(r'(?<![A-Za-z0-9_$.])t\("([^"]+)"\)', code))
+        hooked = set(re.findall(r"data-i18n(?:-attr)?=\"(?:[^\"]*:)?([^\"]+)\"", self.html))
+        keys = set(_catalog(self.html, "en"))
+        dead = sorted(keys - used - hooked)
+        self.assertEqual(dead, [], f"catalog keys nothing reads: {dead}")
+        self.assertEqual(
+            sorted(hooked - keys), [], f"hooks with no catalog key: {sorted(hooked - keys)}"
+        )
+
+    def test_language_switch_rerenders_runtime_panels(self):
+        """Assert setLang re-renders the JS-built panels, not only the hooks.
+
+        applyI18n() only reaches [data-i18n]. The status, missions, jobs,
+        approvals and feed panels are written with innerHTML, so without a
+        re-render they keep the previous language and the page is half
+        translated. The re-render must wait for data to avoid a boot request.
+        """
+        m = re.search(
+            r"function\s+setLang\s*\([^)]*\)\s*\{(.*?)\n  \}", self.html, re.DOTALL
+        )
+        self.assertIsNotNone(m, "setLang not found")
+        body = m.group(1)
+        self.assertIn("applyI18n()", body, "setLang must apply the static hooks")
+        self.assertIn("DATA_ON_SCREEN", body, "setLang must gate the re-render")
+        self.assertIn(
+            "refresh()", body, "setLang must re-render the runtime panels"
+        )
+        self.assertLess(
+            body.index("DATA_ON_SCREEN"),
+            body.index("refresh()"),
+            "the re-render must be gated on DATA_ON_SCREEN",
+        )
+        self.assertRegex(
+            self.html,
+            r"DATA_ON_SCREEN\s*=\s*true",
+            "DATA_ON_SCREEN is never set, so a language switch would never "
+            "re-render anything",
+        )
+
+    def test_timestamps_follow_the_chosen_language(self):
+        """Assert the event feed stops hard-coding the fa-IR locale."""
+        self.assertNotIn(
+            'toLocaleTimeString("fa-IR")',
+            self.html,
+            "event timestamps are pinned to fa-IR and ignore the language",
+        )
+        self.assertIn(
+            "toLocaleTimeString(localeFor())",
+            self.html,
+            "event timestamps must use the active locale",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
