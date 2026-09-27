@@ -185,6 +185,8 @@ const I18N = {
     "ui.readOnly": "read-only",
     "ui.symlink": "symlink",
     "ui.registered": "Project registered",
+    "ui.remove": "Remove",
+    "ui.removeFail": "Remove failed",
     "sys.status": "System status",
     "sys.version": "Version:",
     "sys.executors": "Executors:",
@@ -270,6 +272,8 @@ const I18N = {
     "ui.readOnly": "فقط‌خواندنی",
     "ui.symlink": "نماد_symlink",
     "ui.registered": "پروژه ثبت شد",
+    "ui.remove": "حذف",
+    "ui.removeFail": "حذف ناموفق بود",
     "sys.status": "وضعیت سیستم",
     "sys.version": "نسخه:",
     "sys.executors": "executorها:",
@@ -747,7 +751,24 @@ async function loadProjects() {
     ].filter(Boolean).join(" · ");
     div.innerHTML = `<div class="t">${p.name}</div>
       <div class="m">${p.canonical_root}</div>
-      ${badges ? `<div class="m">${badges}</div>` : ""}`;
+      ${badges ? `<div class="m">${badges}</div>` : ""}
+      <div class="row-inline">
+        <button type="button" class="pill">${t("ui.remove")}</button>
+        <span class="muted" hidden></span>
+      </div>`;
+    const btn = div.querySelector("button.pill");
+    const msg = div.querySelector("span.muted");
+    btn.addEventListener("click", async () => {
+      try {
+        await api("DELETE", "/api/projects/" + p.id);
+        msg.textContent = "";
+        msg.hidden = true;
+        await loadProjects();
+      } catch (e) {
+        msg.textContent = reasonText(e.reason, t("ui.removeFail"));
+        msg.hidden = false;
+      }
+    });
     el.appendChild(div);
   });
 }
