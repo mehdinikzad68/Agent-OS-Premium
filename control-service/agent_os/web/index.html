@@ -27,6 +27,7 @@
     border-radius: 6px; padding: 6px 10px; font-size: 13px;
   }
   button { cursor: pointer; }
+  .langsel { color: var(--muted); font-size: 12px; }
   button:hover { border-color: var(--accent); }
   button.primary { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
   button.ok { background: var(--ok); color: #04120a; border-color: var(--ok); }
@@ -39,8 +40,13 @@
   .list { display: flex; flex-direction: column; gap: 6px; }
   .item { padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
   .item:hover { border-color: var(--accent); }
-  .item .t { font-weight: 600; }
-  .item .m { color: var(--muted); font-size: 12px; }
+  /* .item is now a real <button> so the keyboard can reach it */
+  button.item { text-align: start; width: 100%; font: inherit; color: inherit;
+    display: block; cursor: pointer; }
+  .item .t { display: block; font-weight: 600; }
+  .item .m { display: block; color: var(--muted); font-size: 12px; }
+  /* A keyboard user must be able to see where they are. */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
   .b-draft { background: #30363d; }
   .b-active { background: #0d419d33; color: var(--accent); }
@@ -76,6 +82,11 @@
   <span class="spacer"></span>
   <input id="token" type="password" data-i18n-attr="placeholder:auth.tokenPlaceholder" placeholder="" style="width:220px">
   <button id="btn-connect" class="primary" data-i18n="auth.connect"></button>
+  <label class="langsel" for="lang-select" data-i18n="ui.language"></label>
+  <select id="lang-select" aria-label="Language">
+    <option value="en">English</option>
+    <option value="fa">فارسی</option>
+  </select>
 </header>
 
 <div class="layout">
@@ -145,6 +156,8 @@ const I18N = {
     "conn.needToken": "Enter your token",
     "auth.tokenPlaceholder": "Access token (Bearer)",
     "auth.connect": "Connect",
+    "ui.language": "Language",
+    "ui.saved": "Language saved",
     "sys.status": "System status",
     "sys.version": "Version:",
     "sys.executors": "Executors:",
@@ -208,6 +221,8 @@ const I18N = {
     "conn.needToken": "توکن را وارد کنید",
     "auth.tokenPlaceholder": "توکن دسترسی (Bearer)",
     "auth.connect": "اتصال",
+    "ui.language": "زبان",
+    "ui.saved": "زبان ذخیره شد",
     "sys.status": "وضعیت سیستم",
     "sys.version": "نسخه:",
     "sys.executors": "executorها:",
@@ -266,7 +281,7 @@ const I18N = {
   },
 };
 
-const DEFAULT_LANG = "fa"; // step 2d flips the product default to "en"
+const DEFAULT_LANG = "en"; // product default; Persian is the selectable side
 let LANG = DEFAULT_LANG;
 
 function t(key) {
@@ -308,11 +323,39 @@ function applyI18n(root) {
   });
 }
 
+// localStorage throws in private mode and on a blocked-cookie profile, and
+// a hand-edited value can be anything. One guarded accessor, so no read at
+// module scope can take the page down before it can render anything, and a
+// bad value falls back instead of breaking boot.
+const LANG_STORE_KEY = "agent_os_lang";
+const TOKEN_STORE_KEY = "agent_os_token";
+function readStore(key) {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+function writeStore(key, value) {
+  try { localStorage.setItem(key, value); } catch (e) { /* storage disabled */ }
+}
+function loadLang() {
+  const saved = readStore(LANG_STORE_KEY);
+  if (saved && Object.prototype.hasOwnProperty.call(I18N, saved)) return saved;
+  return DEFAULT_LANG;
+}
+function persistLang(lang) { writeStore(LANG_STORE_KEY, lang); }
+
+// The selector is the only way a user changes the language, so it must
+// never disagree with LANG - including on boot, when setLang runs from the
+// stored value before this listener exists.
+function syncLangSelect() {
+  const el = $("lang-select");
+  if (el && el.value !== LANG) el.value = LANG;
+}
+
 function setLang(lang) {
   LANG = Object.prototype.hasOwnProperty.call(I18N, lang) ? lang : DEFAULT_LANG;
   document.documentElement.lang = LANG === "fa" ? "fa" : "en";
   document.documentElement.dir = LANG === "fa" ? "rtl" : "ltr";
-  try { localStorage.setItem("agent_os_lang", LANG); } catch (e) { /* private mode */ }
+  persistLang(LANG);
+  syncLangSelect();
   if (typeof applyI18n === "function") applyI18n();
   // applyI18n only reaches [data-i18n] hooks. Every runtime panel is built
   // with innerHTML from JS, so those keep the previous language until the
@@ -373,7 +416,7 @@ function uiLogClear() {
 // ==== end client-side diagnostics ====
 
 const $ = (id) => document.getElementById(id);
-let TOKEN = localStorage.getItem("agent_os_token") || "";
+let TOKEN = readStore(TOKEN_STORE_KEY) || "";
 let selectedMission = null;
 let selectedJob = null;
 
@@ -416,7 +459,7 @@ function escapeHtml(s) {
 
 async function connect() {
   TOKEN = $("token").value.trim();
-  localStorage.setItem("agent_os_token", TOKEN);
+  writeStore(TOKEN_STORE_KEY, TOKEN);
   try {
     await api("GET", "/api/status");
     $("conn").textContent = t("conn.connected"); $("conn").style.color = "var(--ok)";
@@ -439,9 +482,10 @@ async function loadMissions() {
   const el = $("missions");
   el.innerHTML = "";
   (d.missions || []).forEach((m) => {
-    const div = document.createElement("div");
+    const div = document.createElement("button");
+    div.type = "button";
     div.className = "item";
-    div.innerHTML = `<div class="t">${m.title}</div><div class="m">${badge(m.state)}</div>`;
+    div.innerHTML = `<span class="t">${m.title}</span><span class="m">${badge(m.state)}</span>`;
     div.onclick = () => { selectedMission = m; loadMissionDetail(m.id); };
     el.appendChild(div);
   });
@@ -467,10 +511,11 @@ async function loadJobs(missionId) {
   const el = $("jobs");
   el.innerHTML = "";
   jobs.forEach((j) => {
-    const div = document.createElement("div");
+    const div = document.createElement("button");
+    div.type = "button";
     div.className = "item";
-    div.innerHTML = `<div class="t">${j.title}</div>
-      <div class="m">${badge(j.state)} · ${j.executor} · ${t("job.attempt")} ${j.attempt_no}</div>`;
+    div.innerHTML = `<span class="t">${j.title}</span>
+      <span class="m">${badge(j.state)} · ${j.executor} · ${t("job.attempt")} ${j.attempt_no}</span>`;
     div.onclick = () => showJob(j);
     el.appendChild(div);
   });
@@ -646,12 +691,16 @@ window.requestApproval = requestApproval;
 window.dispatchJob = dispatchJob;
 window.reconcileJob = reconcileJob;
 
-try {
-  setLang(localStorage.getItem("agent_os_lang") || DEFAULT_LANG);
-} catch (e) { setLang(DEFAULT_LANG); }
+// loadLang() owns the storage key, validates the stored value and survives a
+// disabled localStorage, so boot needs no guard of its own.
+setLang(loadLang());
 applyI18n();
 $("diag-clear").addEventListener("click", uiLogClear);
 $("btn-connect").onclick = async () => { await connect(); refresh(); };
+$("lang-select").addEventListener("change", (e) => {
+  setLang(e.target.value);
+  toast(t("ui.saved"));
+});
 $("btn-mission").onclick = async () => {
   const title = $("new-mission").value.trim();
   if (!title) return;

@@ -308,5 +308,197 @@ class UiI18nTest(unittest.TestCase):
         )
 
 
+    # -- step 2-t: English default, selector, persistence, keyboard -----
+
+    def test_product_default_is_english(self):
+        """Assert DEFAULT_LANG is "en".
+
+        Persian is the selectable side, not the default; the roadmap states
+        this twice and 2-a left a TODO comment in place of the change.
+        """
+        m = re.search(r"""const\s+DEFAULT_LANG\s*=\s*["']([a-z]{2})["']""", self.html)
+        self.assertIsNotNone(m, "DEFAULT_LANG not declared")
+        self.assertEqual(
+            m.group(1), "en", "product default must be English, Persian is optional"
+        )
+
+    def test_no_duplicate_key_in_either_catalog(self):
+        """Assert each language block defines every key exactly once.
+
+        dict() silently keeps the last duplicate, so this must be counted on
+        the raw text, not on the parsed mapping.
+        """
+        for lang in ("en", "fa"):
+            block = re.search(
+                r"\n  " + lang + r":\s*\{(.*?)\n  \},", self.html, re.DOTALL
+            )
+            self.assertIsNotNone(block, f"no {lang} block")
+            keys = re.findall(r'"([^"]+)":\s*"', block.group(1))
+            dupes = sorted({k for k in keys if keys.count(k) > 1})
+            self.assertEqual(dupes, [], f"duplicate keys in {lang}: {dupes}")
+
+    def test_translation_key_fallback_chain(self):
+        """Assert t() falls back current -> default -> the key itself.
+
+        A missing key must never render as `undefined` or as empty text: the
+        last resort is the key name, which is still identifiable in the UI.
+        """
+        m = re.search(r"function\s+t\(\s*key\s*\)\s*\{(.*?)\n\}", self.html, re.DOTALL)
+        self.assertIsNotNone(m, "t() not found")
+        body = m.group(1)
+        self.assertIn("I18N[LANG]", body, "t() must try the active language first")
+        self.assertIn(
+            "I18N[DEFAULT_LANG]", body, "t() must fall back to the default language"
+        )
+        self.assertRegex(body, r"return\s+key;", "t() must fall back to the key name")
+        # and the first two must be guarded, so a prototype key cannot leak
+        self.assertIn(
+            "hasOwnProperty", body, "t() lookups must be own-property guarded"
+        )
+
+    def test_every_key_resolves_in_both_languages(self):
+        """Assert no key renders as itself - i.e. nothing is left untranslated."""
+        for lang in ("en", "fa"):
+            table = _catalog(self.html, lang)
+            for key, value in table.items():
+                self.assertNotEqual(
+                    value.strip(), key, f"{lang}:{key} has no translation"
+                )
+
+    def test_language_selector_exists_and_is_labelled(self):
+        """Assert a real <select> with both languages and an associated label."""
+        self.assertRegex(
+            self.html,
+            r'<label[^>]*for="lang-select"',
+            "the selector needs a <label for>, or a screen reader announces nothing",
+        )
+        self.assertRegex(self.html, r'<select[^>]*id="lang-select"', "no <select>")
+        for value in ("en", "fa"):
+            self.assertRegex(
+                self.html,
+                r'<option\s+value="' + value + r'"',
+                f"the selector is missing the {value} option",
+            )
+        self.assertRegex(
+            self.html,
+            r"""\$?\(["']lang-select["']\)\.addEventListener\(\s*["']change["']""",
+            "the selector has no change listener",
+        )
+        self.assertIn(
+            "setLang(e.target.value)", self.html, "changing the selector must call setLang"
+        )
+
+    def test_selector_cannot_disagree_with_lang(self):
+        """Assert setLang pushes LANG back into the selector.
+
+        Without this the control keeps showing the old choice after boot has
+        read a different language out of localStorage.
+        """
+        m = re.search(r"function\s+setLang\s*\([^)]*\)\s*\{(.*?)\n\}", self.html, re.DOTALL)
+        self.assertIsNotNone(m, "setLang not found")
+        self.assertIn(
+            "syncLangSelect()", m.group(1), "setLang must sync the selector"
+        )
+        self.assertRegex(
+            self.html, r"function\s+syncLangSelect\s*\(", "syncLangSelect is not defined"
+        )
+
+    def test_language_choice_is_persisted_and_validated(self):
+        """Assert the choice survives a restart, and a corrupt one cannot break boot."""
+        self.assertRegex(
+            self.html, r'const\s+LANG_STORE_KEY\s*=\s*"[^"]+"', "no storage key constant"
+        )
+        self.assertRegex(self.html, r"function\s+loadLang\s*\(", "loadLang missing")
+        self.assertRegex(self.html, r"function\s+persistLang\s*\(", "persistLang missing")
+        m = re.search(r"function\s+loadLang\s*\(\s*\)\s*\{(.*?)\n\}", self.html, re.DOTALL)
+        self.assertIsNotNone(m, "loadLang body not found")
+        body = m.group(1)
+        self.assertIn(
+            "hasOwnProperty", body, "a hand-edited stored value must be validated"
+        )
+        self.assertIn("DEFAULT_LANG", body, "loadLang must fall back to the default")
+        # The guard lives in the accessor, not in loadLang: a module-scope
+        # read that throws takes the whole page down before it can render.
+        for accessor in ("readStore", "writeStore"):
+            m = re.search(
+                r"function\s+" + accessor + r"\s*\([^)]*\)\s*\{(.*?)\n\}",
+                self.html, re.DOTALL,
+            )
+            self.assertIsNotNone(m, f"{accessor} is missing")
+            self.assertIn(
+                "try {", m.group(1),
+                f"{accessor} must catch, or a blocked-cookie profile cannot boot",
+            )
+        # stronger than asserting one function: no raw use may survive anywhere
+        guarded = set()
+        for accessor in ("readStore", "writeStore"):
+            m = re.search(
+                r"function\s+" + accessor + r"\s*\([^)]*\)\s*\{(.*?)\n\}",
+                self.html, re.DOTALL,
+            )
+            for line in m.group(1).split("\n"):
+                guarded.add(line.strip())
+        raw = [
+            line.strip()
+            for line in self.html.split("\n")
+            if "localStorage" in line
+            and not line.strip().startswith("//")
+            and line.strip() not in guarded
+        ]
+        self.assertEqual(
+            raw, [], f"unguarded localStorage access: {raw}"
+        )
+        # one key name for both halves, so they cannot drift apart
+        self.assertEqual(
+            len(re.findall(r'["\']agent_os_lang["\']', self.html)),
+            1,
+            "the storage key is hard-coded somewhere instead of using LANG_STORE_KEY",
+        )
+
+    def test_clickable_rows_are_keyboard_reachable(self):
+        """Assert no clickable row is a <div>.
+
+        A div with onclick cannot be focused, cannot be activated with Enter
+        or Space, and is not announced as a control. The mission and job rows
+        are the only clickable ones; the approval row is a container whose
+        actions are its own buttons, and must stay a div (a button inside a
+        button is invalid).
+        """
+        for name in ("m", "j"):
+            m = re.search(
+                r'const\s+\w+\s*=\s*document\.createElement\(\s*"(\w+)"\s*\);\s*\n'
+                r'\s*\w+\.type\s*=\s*"button";\s*\n'
+                r'\s*\w+\.className\s*=\s*"item";\s*\n'
+                r'\s*\w+\.innerHTML\s*=\s*`<[^`]*\$\{' + name + r"\.",
+                self.html,
+            )
+            self.assertIsNotNone(
+                m, f"the {name} row is not built as a <button type=button>"
+            )
+        self.assertNotRegex(
+            self.html,
+            r'createElement\("div"\);\s*\n\s*\w+\.className\s*=\s*"item";[^;]*;\s*\n'
+            r'\s*\w+\.innerHTML[^;]*;\s*\n\s*\w+\.onclick',
+            "a clickable .item row is still a div",
+        )
+        self.assertIn(
+            ":focus-visible", self.html, "a keyboard user must be able to see focus"
+        )
+
+    def test_no_nested_buttons(self):
+        """Assert the approval row stays a container, not a button.
+
+        Its two actions are inner <button>s; wrapping them in a button would
+        produce <button><button>, which is invalid and unactivatable.
+        """
+        self.assertRegex(
+            self.html,
+            r'<div class="row-inline"[^>]*>\s*\n\s*<button class="ok"',
+            "the approval actions are no longer sibling buttons",
+        )
+        for m in re.finditer(r'<button class="item"', self.html):
+            self.fail("a static .item button appeared; check for nesting")
+
+
 if __name__ == "__main__":
     unittest.main()
