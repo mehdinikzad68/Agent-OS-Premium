@@ -17,11 +17,13 @@ architecture brief section 7):
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from .adapters.fake import FakeExecutor  # noqa: F401  (re-export for tests)
+from .logging_setup import get_logger, log_event
 from .models import (
     Approval,
     ApprovalDecision,
@@ -61,6 +63,9 @@ def _bounded_evidence(evidence: dict | None) -> dict:
     return out
 
 
+_log = get_logger("service")
+
+
 class ControlService:
     def __init__(self, db_path: str | Path):
         self.store = Store(db_path)
@@ -76,11 +81,13 @@ class ControlService:
         now = now or utc_now()
         mission = self.store.create_mission(title, now)
         self.store.record_event("mission_created", {"mission_id": mission.id, "title": title})
+        log_event(_log, logging.INFO, "mission.created", mission_id=mission.id, title=title[:120])
         return mission
 
     def activate_mission(self, mission_id: str) -> Mission:
         self.store.update_mission_state(mission_id, MissionState.ACTIVE)
         self.store.record_event("mission_activated", {"mission_id": mission_id})
+        log_event(_log, logging.INFO, "mission.activated", mission_id=mission_id)
         mission = self.store.get_mission(mission_id)
         assert mission is not None
         return mission
@@ -186,6 +193,15 @@ class ControlService:
         self.store.insert_approval(approval)
         self.store.update_job(job_id, state=JobState.AWAITING_APPROVAL)
         self.store.record_event("approval_requested", {"approval_id": approval.id, "job_id": job_id})
+        log_event(
+            _log,
+            logging.INFO,
+            "approval.requested",
+            approval_id=approval.id,
+            job_id=job_id,
+            executor=job.executor,
+            expires_at=approval.expires_at,
+        )
         return approval
 
     def decide(
@@ -212,10 +228,24 @@ class ControlService:
             self.store.record_event(
                 "approval_granted", {"approval_id": approval_id, "job_id": approval.job_id}
             )
+            log_event(
+                _log,
+                logging.INFO,
+                "approval.granted",
+                approval_id=approval_id,
+                job_id=approval.job_id,
+            )
         else:
             self.store.update_job(approval.job_id, state=JobState.PROPOSED)
             self.store.record_event(
                 "approval_denied", {"approval_id": approval_id, "job_id": approval.job_id}
+            )
+            log_event(
+                _log,
+                logging.INFO,
+                "approval.denied",
+                approval_id=approval_id,
+                job_id=approval.job_id,
             )
         return approval
 
@@ -239,6 +269,13 @@ class ControlService:
             self.store.record_event(
                 "dispatch_denied", {"job_id": job_id, "reason": "interrupted_unknown_requires_human_reconcile"}
             )
+            log_event(
+                _log,
+                logging.WARNING,
+                "dispatch.refused",
+                job_id=job_id,
+                reason="interrupted_unknown_requires_human_reconcile",
+            )
             raise DispatchRefused("interrupted_unknown_requires_human_reconcile")
 
         # A6: duplicate dispatch of an in-flight/finished intent is idempotent.
@@ -254,6 +291,13 @@ class ControlService:
         denial = validate_dispatch(job, approval, now)
         if denial is not None:
             self.store.record_event("dispatch_denied", {"job_id": job_id, "reason": denial})
+            log_event(
+                _log,
+                logging.WARNING,
+                "dispatch.refused",
+                job_id=job_id,
+                reason=denial,
+            )
             raise DispatchRefused(denial)
 
         # A3: the adapter's tool inventory is fixed; proposals cannot enlarge it.
@@ -261,6 +305,13 @@ class ControlService:
         if unsupported:
             reason = "actions_not_supported_by_executor:" + ",".join(unsupported)
             self.store.record_event("dispatch_denied", {"job_id": job_id, "reason": reason})
+            log_event(
+                _log,
+                logging.WARNING,
+                "dispatch.refused",
+                job_id=job_id,
+                reason=reason,
+            )
             raise DispatchRefused(reason)
 
         # Persist the dispatch intent BEFORE invoking the executor.
@@ -272,6 +323,15 @@ class ControlService:
             dedup_key=f"dispatch:{job_id}:{attempt}",
         )
         self.store.update_job(job_id, state=JobState.RUNNING)
+        log_event(
+            _log,
+            logging.INFO,
+            "dispatch.started",
+            job_id=job_id,
+            attempt=attempt,
+            executor=job.executor,
+            actions=list(job.actions),
+        )
 
         try:
             outcome: WorkerOutcome = adapter.run(job, attempt)
@@ -281,6 +341,14 @@ class ControlService:
             self.store.update_job(job_id, state=JobState.INTERRUPTED_UNKNOWN)
             self.store.record_event(
                 "worker_lost", {"job_id": job_id, "attempt": attempt}
+            )
+            log_event(
+                _log,
+                logging.ERROR,
+                "dispatch.worker_lost",
+                exc_info=True,
+                job_id=job_id,
+                attempt=attempt,
             )
             updated = self.store.get_job(job_id)
             assert updated is not None
@@ -293,6 +361,13 @@ class ControlService:
         # The evidence itself is PERSISTED in the completion event so it
         # survives restarts and page reloads (durable evidence workflow).
         if outcome.status == "completed_with_evidence" and self._evidence_satisfies(outcome):
+            log_event(
+                _log,
+                logging.INFO,
+                "job.completed_verified",
+                job_id=job_id,
+                attempt=attempt,
+            )
             self.store.update_job(job_id, state=JobState.COMPLETED_VERIFIED)
             self.store.record_event(
                 "job_completed_verified",
@@ -300,6 +375,15 @@ class ControlService:
                  "evidence": _bounded_evidence(outcome.evidence)},
             )
         else:
+            log_event(
+                _log,
+                logging.WARNING,
+                "job.completed_unverified",
+                job_id=job_id,
+                attempt=attempt,
+                worker_status=outcome.status,
+                missing=[k for k in REQUIRED_EVIDENCE_KEYS if not (outcome.evidence or {}).get(k)],
+            )
             self.store.update_job(job_id, state=JobState.COMPLETED_UNVERIFIED)
             self.store.record_event(
                 "job_completed_unverified",

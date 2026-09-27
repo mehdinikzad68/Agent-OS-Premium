@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import secrets
+import time
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -33,7 +35,10 @@ from .models import (
     Principal,
     utc_now,
 )
+from .logging_setup import get_logger, log_event
 from .service import ControlService
+
+_log = get_logger("api")
 
 _EXECUTORS: dict[str, object] = {}
 
@@ -134,6 +139,15 @@ class AgentOSApi:
         except ValueError as e:
             return 400, {"error": {"code": "bad_request", "message": str(e)}}
         except Exception as e:  # noqa: BLE001 - last-resort guard; never leak internals
+            # The response stays generic on purpose; the LOG is where the real
+            # cause becomes visible. Without this the 500 was untraceable.
+            log_event(
+                _log,
+                logging.ERROR,
+                "api.internal_error",
+                exc_info=True,
+                error=f"{type(e).__name__}: {e}"[:500],
+            )
             return 500, {"error": {"code": "internal", "message": "internal error"}}
 
     # -- GET ----------------------------------------------------------------
@@ -358,7 +372,40 @@ def make_handler(api: AgentOSApi, token: Optional[str]) -> type[BaseHTTPRequestH
             self.end_headers()
             self.wfile.write(data)
 
+        def _timed(self, method: str) -> None:
+            # The single point where a request is recorded. It sits on
+            # do_GET/do_POST rather than on _route, because the UI shell is
+            # served without a token and never reaches the router.
+            self._resp_status = None
+            started = time.perf_counter()
+            try:
+                self._route(method)
+            finally:
+                log_event(
+                    _log,
+                    logging.DEBUG,
+                    "http.request",
+                    method=method,
+                    path=self.path,
+                    status=getattr(self, "_resp_status", None),
+                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                )
+
+        def send_response(self, code, message=None):  # noqa: D102
+            # http.server keeps the status code in a local, not on self,
+            # which is why the first version of the request log recorded
+            # status=None for every single line.
+            self._resp_status = code
+            super().send_response(code, message)
+
         def _route(self, method: str) -> None:
+            # The static UI shell is served without a bearer token: a browser
+            # navigating to the loopback URL cannot send an Authorization
+            # header. The shell contains no secrets; every /api/* endpoint
+            # below still requires the token.
+            if method == "GET" and self.path in ("/", "/ui", "/index.html"):
+                self._serve_ui()
+                return
             if not self._authorize():
                 self._send(401, {"error": {"code": "unauthorized", "message": "missing or invalid token"}})
                 return
@@ -381,14 +428,7 @@ def make_handler(api: AgentOSApi, token: Optional[str]) -> type[BaseHTTPRequestH
             self._send(status, payload)
 
         def do_GET(self):  # noqa: N802
-            # The static UI shell is served without a bearer token: a browser
-            # navigating to the loopback URL cannot send an Authorization
-            # header. The shell contains no secrets; every /api/* endpoint
-            # below still requires the token.
-            if self.path in ("/", "/ui", "/index.html"):
-                self._serve_ui()
-                return
-            self._route("GET")
+            self._timed("GET")
 
         def _serve_ui(self) -> None:
             from pathlib import Path
@@ -406,10 +446,13 @@ def make_handler(api: AgentOSApi, token: Optional[str]) -> type[BaseHTTPRequestH
             self.wfile.write(data)
 
         def do_POST(self):  # noqa: N802
-            self._route("POST")
+            self._timed("POST")
 
-        def log_message(self, *args):  # silence default stderr logging
-            pass
+        def log_message(self, fmt, *args):  # noqa: A003 - BaseHTTPRequestHandler API
+            # Silent on purpose. The framework access line duplicates
+            # _timed()'s http.request, which already carries the status and
+            # the duration. Request logging lives in exactly one place.
+            return
 
     return Handler
 

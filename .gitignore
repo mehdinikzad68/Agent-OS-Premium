@@ -31,3 +31,7 @@ Thumbs.db
 # (agent-os-*-master-*.md, agent-os-private-development-*.md) and the design
 # references under UI-Image/ are intentionally tracked here. The ignore rules
 # that protected them before this repo existed were removed deliberately.
+
+# Structured logs (Phase 1 logging step) — regenerated at runtime, never committed
+.logs/
+sandboxes/

@@ -118,6 +118,13 @@
       <h2 data-i18n="feed.title"></h2>
       <div id="feed" class="feed">—</div>
     </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2 data-i18n="diag.title"></h2>
+      <div class="muted" data-i18n="diag.hint"></div>
+      <pre id="diag" class="feed" style="margin-top:8px">—</pre>
+      <button id="diag-clear" type="button" data-i18n="diag.clear"></button>
+    </div>
   </main>
 </div>
 
@@ -149,6 +156,9 @@ const I18N = {
     "job.detail": "Job details + evidence",
     "approvals.box": "Approvals",
     "feed.title": "Events (event feed)",
+    "diag.title": "Diagnostics",
+    "diag.hint": "Errors the page caught, newest last. Kept in this tab only.",
+    "diag.clear": "Clear",
   },
   fa: {
     "app.title": "Agent OS — Mission Control",
@@ -168,6 +178,9 @@ const I18N = {
     "job.detail": "جزئیات کار + شواهد",
     "approvals.box": "صندوق تأییدها",
     "feed.title": "رویدادها (event feed)",
+    "diag.title": "تشخیص خطا",
+    "diag.hint": "خطاهایی که صفحه گرفت، جدیدترین در انتها. فقط در همین زبانه می‌ماند.",
+    "diag.clear": "پاک کردن",
   },
 };
 
@@ -221,6 +234,50 @@ function localeFor() {
 }
 // ==== end i18n scaffold ====
 
+// ==== client-side diagnostics ====
+// Errors that the page swallowed used to leave no trace at all: a failed
+// refresh produced a silently empty screen. Every caught error now lands in
+// one in-memory ring buffer and is rendered in the diagnostics panel. The
+// buffer never leaves the browser: no network call, no secret in the DOM.
+const UI_LOG_CAP = 200;
+const UI_LOG = [];
+let UI_LOG_DIRTY = false;
+
+function _errText(e) {
+  if (!e) return "unknown error";
+  if (typeof e === "string") return e;
+  return e.message || e.name || String(e);
+}
+
+function uiLog(level, message, fields) {
+  const entry = {
+    at: new Date().toISOString().slice(11, 23),
+    level: level || "error",
+    message: String(message),
+  };
+  if (fields) for (const k of Object.keys(fields)) entry[k] = fields[k];
+  UI_LOG.push(entry);
+  while (UI_LOG.length > UI_LOG_CAP) UI_LOG.shift();
+  UI_LOG_DIRTY = true;
+  // Also to the browser console, so devtools shows it without opening the panel.
+  const line = `${entry.at} ${entry.level.toUpperCase()} ${entry.message}`;
+  if (entry.level === "error") console.error(line, fields || "");
+  else console.warn(line, fields || "");
+  const el = $("diag");
+  if (el) el.textContent = UI_LOG.length
+    ? UI_LOG.map((r) => `${r.at} ${r.level.toUpperCase().padEnd(5)} ${r.message}`
+        + (r.detail ? `  (${r.detail})` : "")).join("\n")
+    : "—";
+}
+
+function uiLogClear() {
+  UI_LOG.length = 0;
+  UI_LOG_DIRTY = false;
+  const el = $("diag");
+  if (el) el.textContent = "—";
+}
+// ==== end client-side diagnostics ====
+
 const $ = (id) => document.getElementById(id);
 let TOKEN = localStorage.getItem("agent_os_token") || "";
 let selectedMission = null;
@@ -236,7 +293,10 @@ async function api(method, path, body) {
     method, headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  const data = await resp.json().catch(() => ({}));
+  const data = await resp.json().catch(() => {
+    uiLog("warn", "response body was not JSON", { status: resp.status });
+    return {};
+  });
   if (!resp.ok) {
     const msg = (data.error && data.error.message) || ("HTTP " + resp.status);
     throw new Error(msg);
@@ -476,8 +536,14 @@ async function refresh() {
   try {
     await Promise.all([loadStatus(), loadMissions(), loadApprovals(), loadFeed()]);
     if (selectedMission) loadMissionDetail(selectedMission.id);
-    if (selectedJob) renderJobDetail(selectedJob.id).catch(() => {});
-  } catch (e) { /* auth or transient */ }
+    if (selectedJob) {
+      renderJobDetail(selectedJob.id).catch((e) =>
+        uiLog("error", "job detail re-render failed", { detail: _errText(e) }));
+    }
+  } catch (e) {
+    // Was `/* auth or transient *\/`: a failed refresh left no trace.
+    uiLog("error", "refresh failed", { detail: _errText(e) });
+  }
 }
 
 window.decide = decide;
@@ -489,6 +555,7 @@ try {
   setLang(localStorage.getItem("agent_os_lang") || DEFAULT_LANG);
 } catch (e) { setLang(DEFAULT_LANG); }
 applyI18n();
+$("diag-clear").addEventListener("click", uiLogClear);
 $("btn-connect").onclick = async () => { await connect(); refresh(); };
 $("btn-mission").onclick = async () => {
   const title = $("new-mission").value.trim();
@@ -498,7 +565,13 @@ $("btn-mission").onclick = async () => {
 };
 
 (async () => {
-  if (TOKEN) { try { await refresh(); } catch (e) {} }
+  if (TOKEN) {
+    try {
+      await refresh();
+    } catch (e) {
+      uiLog("error", "initial load failed", { detail: _errText(e) });
+    }
+  }
   else { $("conn").textContent = "توکن را وارد کنید"; }
   setInterval(() => { if (TOKEN) refresh(); }, 4000);
 })();

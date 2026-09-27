@@ -18,9 +18,11 @@ explicitly given (test/dev only).
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 
+from .logging_setup import configure, get_logger, log_event, register_secret
 from .models import utc_now
 from .service import ControlService
 from .api import serve, register_executor, generate_token
@@ -37,7 +39,12 @@ def _resolve_token(args) -> str | None:
 
 
 def cmd_serve(args) -> int:
+    _log = get_logger("cli")
+    log_file = configure()
     token = _resolve_token(args)
+    # The live bearer token is not a static string in the source, so pattern
+    # matching cannot catch it. Registering it is what makes it unmaskable.
+    register_secret(token)
     if token is None and not args.insecure:
         print("refusing to serve without a token. set AGENT_OS_TOKEN, pass --token, or --insecure", file=sys.stderr)
         return 2
@@ -46,6 +53,17 @@ def cmd_serve(args) -> int:
     # Only the fake executor is registered by default. Real adapters are
     # registered ONLY when explicitly enabled by an operator decision.
     register_executor("fake-executor", FakeExecutor(behavior=args.fake_behavior))
+    log_event(
+        _log,
+        logging.INFO,
+        "service.start",
+        db=str(args.db),
+        host=args.host,
+        port=args.port,
+        auth="token" if token else "INSECURE",
+        subprocess_executor=bool(args.enable_subprocess),
+        log_file=str(log_file) if log_file else None,
+    )
 
     # Gated: the subprocess executor runs real OS commands in a disposable
     # copy of a source workspace. It requires an explicit, separate opt-in
@@ -84,6 +102,7 @@ def cmd_serve(args) -> int:
     finally:
         server.server_close()
         service.close()
+        log_event(_log, logging.INFO, "service.stop", host=host, port=port)
     return 0
 
 
