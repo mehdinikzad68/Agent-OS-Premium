@@ -37,6 +37,7 @@ from ..models import (
     WorkerOutcome,
     decode_command,
 )
+from ..paths import canonicalize, is_within
 
 
 class SubprocessExecutor:
@@ -106,6 +107,21 @@ class SubprocessExecutor:
         # with a unique name rather than tempfile.mkdtemp: mkdtemp creates the
         # dir with mode 0o700, which restricted sandboxes may refuse to write
         # into; a normal mkdir behaves like any harness-allowed directory.
+        #
+        # Refuse BEFORE creating anything: the copy follows symlinks by
+        # default, so an escaping link would put outside content into a
+        # directory the command can read and the evidence will publish.
+        if self.source_workspace.exists():
+            escaping = _find_escaping_links(self.source_workspace)
+            if escaping:
+                raise WorkerLostError(
+                    "refusing to run: the source workspace contains symlinks "
+                    f"that point outside it ({len(escaping)} found); the copy "
+                    "would carry their contents into the run directory. "
+                    "Remove them, or point --source-workspace elsewhere. "
+                    "Offending paths: " + "; ".join(escaping[:10])
+                )
+
         sandbox = self.sandbox_root / f"agent-os-run-{uuid.uuid4().hex[:12]}"
         sandbox.mkdir()
         try:
@@ -266,6 +282,47 @@ def _kill_process_tree(proc, pid=None) -> None:
             os.kill(target, signal.SIGKILL)
         except OSError:
             pass
+
+
+def _find_escaping_links(src: Path) -> list[str]:
+    """Every symlink under `src` whose real target lies OUTSIDE `src`.
+
+    shutil.copytree defaults to symlinks=False, which FOLLOWS a link and copies
+    the target's contents. A link to ~/.ssh therefore lands inside the sandbox,
+    where a command can read it and - because the executor publishes stdout in
+    evidence, and /api/jobs/<id>/evidence returns it - the contents leave over
+    HTTP. Measured before this guard existed: a link named innocently copied
+    `id_rsa` and `credentials` into the run directory.
+
+    Preserving the link instead (symlinks=True) is NOT a fix. Measured: a
+    command reading through a preserved link still returns the target's
+    contents, because the read happens with the server's own privileges. So the
+    copy cannot be made safe by a flag - the run is refused instead.
+
+    os.walk(followlinks=False) is used rather than a top-level iterdir(): a
+    link nested at any depth must be found, and walk still REPORTS links (it
+    just does not descend through them). is_within is the same predicate the
+    Phase 1 project registry uses, so the notion of "inside" is one thing in
+    this codebase - and it rejects a sibling that merely shares a prefix.
+
+    A link whose target stays inside `src` is not reported: copying it is
+    harmless, and refusing ordinary projects for a self-referential link would
+    be a regression bought for nothing.
+    """
+    root = canonicalize(os.path.realpath(src))
+    escaping: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(src, followlinks=False):
+        for name in list(dirnames) + filenames:
+            p = Path(dirpath) / name
+            if not p.is_symlink():
+                continue
+            # do not descend into a link we are about to reject or ignore
+            if name in dirnames:
+                dirnames.remove(name)
+            target = os.path.realpath(p)
+            if not is_within(root, canonicalize(target)):
+                escaping.append(f"{p.relative_to(src)} -> {target}")
+    return sorted(escaping)
 
 
 def _copytree_into(src: Path, dst: Path) -> None:

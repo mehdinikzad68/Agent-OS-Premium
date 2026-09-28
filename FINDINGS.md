@@ -33,10 +33,12 @@ matters as much as the list: a reviewer's report is a hypothesis, not a finding.
 | F2 | `cwd` is a starting point, not a boundary; writes outside are not prevented | high | **PARTIAL** — declared in `cddcb46`, real boundary is Phase 6 |
 | F3 | `kill()` does not kill the process group; a backgrounded child survives the timeout | medium | **CLOSED** — process group + SIGKILL on every exit path |
 | F4 | The `command` type annotation was neither a guard nor correct | medium | **CLOSED** — `cddcb46` (edge validation) + `6079c22` (storage) |
-| F5 | `copytree` follows symlinks, so a link to `~/.ssh` copies the keys in | low | **OPEN** |
+| F5 | `copytree` follows symlinks, so outside content was copied in and returned by the evidence endpoint | high | **CLOSED** — refuse escaping links before the copy |
 | F6 | Cleanup failures are silent (`ignore_errors=True`, four sites) | low | **OPEN** |
 | F7 | Two resource leaks: sqlite connect, and a window before `try/finally` | low | **OPEN** |
 | F8 | `jobs.command` could not survive storage at all | — | **CLOSED** — `6079c22` |
+| F9 | `_copytree_into` recurses through a link to an ancestor until ELOOP; fails closed but with a raw OSError | low | **OPEN** — refuse to descend through a link |
+| F10 | `POST /api/projects` ignores the `scope` parameter its service method accepts | informational | **OPEN** — document, or pass it |
 
 `SCHEMA_VERSION` is 2 and must stay 2 for the work above; F1 and F8 both needed
 no migration because `scope_json` and `command` are existing columns.
@@ -247,3 +249,79 @@ a caller always supplies explicitly.
 - Two of the four rejected claims were checkable in one command each — for
   example, whether any released revision ever created a table without a column.
   Plausibility is not history.
+
+### Measured, then closed
+
+Before the fix, over the real API. A symlink named `shared`, with no hint in
+the name, pointing at a directory holding an `id_rsa` and a `credentials`:
+
+    dispatch 200, final state completed_unverified
+    GET /api/jobs/<id>/evidence ->
+      "diff": "exit_code=0\n\n--- stdout ---\npassword=hunter2\n"
+
+So the finding was understated in two ways. A link to a single FILE leaks too
+(it takes the copy2 branch, not copytree), and the content does not merely land
+on disk - the executor publishes stdout as evidence and the API hands it back
+over HTTP. The leak has a network path.
+
+`shutil.copytree(symlinks=True)` was measured as a non-fix: a command reading
+through a preserved link still returned the target's contents, because the read
+happens with the server's own privileges. Preserving links stops the copy, not
+the read. The copy cannot be made safe by a flag, so the run is refused.
+
+`_find_escaping_links` reuses `is_within`/`canonicalize` from paths.py - the
+same predicate Phase 1 uses for the project registry, so "inside" means one
+thing in this codebase. It walks with `followlinks=False` and also removes each
+link from `dirnames`, because a link to an ancestor would otherwise walk
+forever. Measured: a link to a sibling sharing a prefix (`/src` vs `/srcs`) is
+correctly an escape.
+
+Chosen behaviour (option A): any link leaving the workspace refuses the run and
+the message names the offending paths. A link that stays inside is allowed, so
+an ordinary project is not broken for a self-referential link. The cost is
+honest: a project that symlinks `vendor/` or `node_modules/` out of its tree
+will be refused, and the operator is told why.
+
+The guard runs BEFORE the sandbox is created, and a test asserts that order by
+witnessing the filesystem - a guard that raised after the copy would still
+produce the right message while the secrets sat in the run directory.
+
+**Not fixed here, and stated rather than implied:** the guard stops the copy.
+A command can still read any path the server can read, because it runs as the
+server. That is F2, and it is Phase 6 work. This finding closed the copy, not
+the read.
+
+Evidence: `tests/test_symlink_boundary.py` (12 tests), mutation 8/8 killed,
+and `f5_proof.py` over real HTTP - PROVEN on the real code, NOT PROVEN with the
+guard disabled, where the run completed and `password=hunter2` came back in the
+evidence body.
+
+## F9 — the copy recurses through a link to an ancestor — OPEN
+
+Found by F5's own test, not by review. `_copytree_into` tests `child.is_dir()`,
+which FOLLOWS a symlink, so a link pointing at an ancestor is recursed into
+until the OS refuses:
+
+    shutil.Error: [Errno 40] Too many levels of symbolic links
+
+It fails closed and fast - no hang, nothing copied outside - so this is a
+usability and robustness defect, not a containment hole. A self-referential
+link inside the workspace is legal, and the guard correctly allows it, but the
+run then dies with a raw OSError surfaced as a prepare failure.
+
+Fix shape: make the copy refuse to descend through a link at all, the same way
+the guard refuses to walk through one. Not started.
+
+## F10 — POST /api/projects ignores a caller-supplied scope — OPEN
+
+Found while writing F5's proof. `register_project` accepts a `scope` parameter
+and documents that the default comes from configuration, but the HTTP handler
+never passes it (api.py, `_post` for `/api/projects`), so the only way to widen
+the allowed root is the `AGENT_OS_PROJECT_SCOPE` environment variable. This is
+fail-closed and arguably deliberate - the client does not get to choose its own
+boundary - but the parameter existing while the handler ignores it is a trap for
+the next reader, and it is undocumented at the API surface.
+
+Not security-relevant: a caller can only ever be MORE restricted by omission.
+Recorded so the next person writing a proof or a client does not spend an hour
+rediscovering it.

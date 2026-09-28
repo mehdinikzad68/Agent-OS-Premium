@@ -1,0 +1,37 @@
+--- real code (real code) -> exit 0 : PROVEN
+    1. a symlink named 'shared' points outside the workspace
+       and the real target holds an id_rsa and a credentials file
+    2. project registered at the workspace root (HTTP 201)
+    3. job job-eb634e020c27 created, asking to read shared/credentials
+    4. approval requested then granted (HTTP 200)
+    5. dispatch -> HTTP 200
+       dispatch accepted the job; whether the command actually ran
+       is decided by the final state and by what evidence contains
+    6. final state: interrupted_unknown
+    7. evidence endpoint -> HTTP 200, 126 bytes
+       evidence as returned: {"job_id": "job-eb634e020c27", "state": "interrupted_unknown", "evidence": null, "note": "no persisted evidence for this job"}
+       the workspace's own file mentions 'hello from the workspace': False
+    
+    PROVEN
+       - the run was refused, with the offending path named
+       - the secret appears nowhere in the dispatch response
+       - the secret appears nowhere in the evidence endpoint
+--- mutated: guard removed (guard REMOVED) -> exit 1 : NOT PROVEN
+    1. a symlink named 'shared' points outside the workspace
+       and the real target holds an id_rsa and a credentials file
+    2. project registered at the workspace root (HTTP 201)
+    3. job job-c0ff02601c53 created, asking to read shared/credentials
+    4. approval requested then granted (HTTP 200)
+    5. dispatch -> HTTP 200
+       dispatch accepted the job; whether the command actually ran
+       is decided by the final state and by what evidence contains
+    6. final state: completed_unverified
+    7. evidence endpoint -> HTTP 200, 282 bytes
+       evidence as returned: {"job_id": "job-c0ff02601c53", "state": "completed_unverified", "evidence": {"diff": "exit_code=0\n\n--- stdout ---\npassword=hunter2\n", "exit_code": 0, "sandbox": "", "test_report": ""}, "event_seq": 6, "ts": "2026-09-28T11:56:21.630066+00:00", "kind": "job_completed_unverified"}
+       the workspace's own file mentions 'hello from the workspace': False
+    
+    NOT PROVEN - outside content reached the client:
+       LEAK: credentials
+       final state was: completed_unverified
+
+VERDICT: the proof is sound. It passes on the fixed code and fails when the guard is removed.
