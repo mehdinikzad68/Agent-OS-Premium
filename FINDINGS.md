@@ -31,7 +31,7 @@ matters as much as the list: a reviewer's report is a hypothesis, not a finding.
 |---|---|---|---|
 | F1 | An approval did not name the command it authorized | critical (conditional) | **CLOSED** — `e2aed6e`; proof repaired `a9e111e` |
 | F2 | `cwd` is a starting point, not a boundary; writes outside are not prevented | high | **PARTIAL** — declared in `cddcb46`, real boundary is Phase 6 |
-| F3 | `kill()` does not kill the process group; a backgrounded child survives the timeout | medium | **OPEN** |
+| F3 | `kill()` does not kill the process group; a backgrounded child survives the timeout | medium | **CLOSED** — process group + SIGKILL on every exit path |
 | F4 | The `command` type annotation was neither a guard nor correct | medium | **CLOSED** — `cddcb46` (edge validation) + `6079c22` (storage) |
 | F5 | `copytree` follows symlinks, so a link to `~/.ssh` copies the keys in | low | **OPEN** |
 | F6 | Cleanup failures are silent (`ignore_errors=True`, four sites) | low | **OPEN** |
@@ -120,7 +120,7 @@ per-project runner with a minimal mount set. Until then, treat any subprocess
 dispatch as running with the server's own OS privileges. **Do not read the
 remaining risk as closed.**
 
-## F3 — the timeout kills only the direct child — OPEN
+## F3 — the timeout kills only the direct child — CLOSED
 
 `proc.kill()` kills the immediate child. `["bash", "-c", "sleep 999 &"]` leaves
 a grandchild running while the timeout is reported honestly as a timeout.
@@ -130,6 +130,68 @@ Same root cause produces a second leak: there is no `finally` around the
 
 Fix shape: start the child in its own session (`start_new_session=True`) and
 signal the group, plus a `finally` that guarantees cleanup.
+
+### Measured, then closed
+
+Before the fix, with a job whose command spawns a background child:
+
+| | |
+|---|---|
+| marker 1.5s after the timeout | 58 → **82** (still writing) |
+| processes still running | **1** |
+| timeout reporting | honest — `reason: timeout` |
+
+The outcome was never a lie. The defect was that the tree kept running while
+the API reported the work finished and the sandbox removed.
+
+After: marker 58 → 58, zero survivors, timeout still reported honestly.
+
+`start_new_session=True`, then `os.killpg` with SIGKILL, with the pid captured
+the moment the child exists so a post-fork raise can still clean up.
+
+**Two cleanup paths, and they are complementary — measured, not assumed:**
+
+| configuration | grandchild survives |
+|---|---|
+| real code | no |
+| `finally` removed | no |
+| `except Exception` cleanup removed | no |
+| **both removed** | **yes, 2 processes** |
+
+So the `finally` is not redundant: `KeyboardInterrupt` is a `BaseException` and
+`except Exception` never sees it.
+
+**A test witness can be wrong even when the test is green.** The interrupt test
+originally watched the marker's motion and passed with the `finally` neutered.
+Instrumenting the call showed cleanup arriving from line 176, not the branch
+under test: a frozen marker cannot distinguish "killed by the executor" from
+"killed by the harness on the way out". Asserting on live pids fixed it.
+
+**A SIGKILL→SIGTERM mutation that survived was a BAD mutation, not a weak
+test** — the stamping child does not handle SIGTERM, so the two signals are
+equivalent for it. The discriminating workload is a child that *ignores*
+SIGTERM; that test now kills it and the mutation dies.
+
+**Two of my own patches landed as comments only.** Twice, an edit anchored on
+`shell=False,` moved the real line while leaving its comment behind, so
+`start_new_session=True` existed in the file but only inside a docstring. The
+mechanism tests caught it; a green suite over code that does not contain the
+fix would not have.
+
+**A finding narrowed by measurement rather than by argument.** A mutation
+prompted the claim that cleanup depends on Popen *returning* — so a Popen
+raising after the fork leaks. Measured: a Popen that raises reaps its own
+child and leaks nothing. The uncovered case is the synthetic one where the pid
+never reaches `run()`, which is not a defect to patch but a property to state.
+
+Platform (owner decision): POSIX only, with an explicit refusal when
+`os.killpg` is absent — no Windows branch, because the suite runs in WSL and
+such a branch could never be exercised by any test here.
+
+Two honest surfaces had to change with it: the startup banner claimed a timeout
+"kills only the direct child, not its grandchildren", and the executor's bypass
+event carried `timeout_kills_process_group=False`. Both now state what is true.
+`writes_bounded=False` is unchanged — that is F2, still open.
 
 ## F4 — the type annotation was documentation, not a guard — CLOSED
 

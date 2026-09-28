@@ -13,6 +13,7 @@ on it, and no test was written around it - a test that pins a known break
 either fails forever or gets deleted, and both outcomes lose the information.
 """
 import pathlib
+import re
 import unittest
 
 from agent_os.api import AgentOSApi, ApiError
@@ -120,7 +121,12 @@ class BypassIsDeclaredTest(unittest.TestCase):
     def test_the_banner_does_not_claim_the_working_copy_is_a_boundary(self):
         # The phrase must survive as a negation. If someone later rewrote this
         # into a reassurance, this fails - which is the point.
-        self.assertIn("not a security boundary", self.text)
+        #
+        # Read the ASSEMBLED banner, not the file: the sentence is built from
+        # adjacent string literals, so the contiguous phrase is not in the
+        # source at all. Scanning raw source is how this test came to depend on
+        # incidental line breaks.
+        self.assertIn("not a security boundary", self._banner())
 
     def test_the_bypass_is_also_a_structured_event_not_only_a_print(self):
         # A print dies with the terminal; the event is queryable later.
@@ -140,21 +146,57 @@ class BypassIsDeclaredTest(unittest.TestCase):
         self.assertIn("logging.WARNING", self.text[j:i],
                       "the bypass event must be logged at WARNING, not INFO")
 
+    def _banner(self):
+        """The startup banner as the operator actually receives it.
+
+        Built from adjacent string literals, so a source-text scan cannot see
+        the phrases it is supposed to be checking. Assemble it the same way
+        Python does.
+        """
+        i = self.text.find("bypass = (")
+        j = self.text.find(")\n        print(bypass)", i)
+        self.assertGreater(i, 0, "the bypass banner is missing from cli.py")
+        self.assertGreater(j, i, "could not find the end of the banner literal")
+        return "".join(
+            re.findall(r'"((?:[^"\\]|\\.)*)"', self.text[i:j])
+        ).replace("\\n", "\n")
+
     def test_all_four_risk_facts_are_in_the_single_event(self):
         # One event, four fields, so an operator reading the event store sees
         # the whole picture in one record instead of correlating three lines.
         i = self.text.find('"executor.bypass_declared"')
-        window = self.text[i:i + 500]
+        window = self.text[i:i + 800]
         for field in ("approval_gate=False", "approval_gate_planned_phase=",
                       "writes_bounded=False", "timeout_kills_process_group="):
             self.assertIn(field, window, f"{field} is missing from the event")
 
     def test_the_event_records_the_unbounded_writes_fact_too(self):
         # Declaring only the approval gap would understate the risk: the child
-        # can write outside the sandbox, and a timeout kills only the direct
-        # child. Both belong in the same declaration.
+        # can write outside the sandbox. That one is still true - it is F2,
+        # deferred to Phase 6.
         self.assertIn("writes_bounded=False", self.text)
-        self.assertIn("timeout_kills_process_group=False", self.text)
+
+    def test_the_process_group_fact_is_now_true_and_says_why(self):
+        # This field used to be False and the declaration was honest then. F3
+        # closed the gap: the child leads its own process group and a timeout
+        # SIGKILLs the group, so no descendant outlives the call. Leaving the
+        # flag at False would now UNDERSTATE what the executor guarantees.
+        self.assertIn("timeout_kills_process_group=True", self.text)
+        self.assertNotIn("timeout_kills_process_group=False", self.text)
+
+    def test_the_printed_warning_no_longer_claims_grandchildren_survive(self):
+        # The startup banner told the operator that a timeout "kills only the
+        # direct child, not its grandchildren". After F3 that sentence is
+        # false, and a false warning is worse than a missing one.
+        #
+        # Assert on the ASSEMBLED text, not on the source: the sentence is
+        # built from adjacent string literals, so the contiguous phrase never
+        # appears in the file. A source-text scan was the mistake this test
+        # originally made.
+        banner = self._banner()
+        self.assertNotIn("kills only the direct child", banner)
+        self.assertIn("process group", banner)
+        self.assertIn("not a security boundary", banner)
 
 
 if __name__ == "__main__":

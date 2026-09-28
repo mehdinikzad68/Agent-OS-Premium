@@ -21,7 +21,9 @@ when the caller passes an explicit flag. It runs plain OS commands (e.g.
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -42,6 +44,13 @@ class SubprocessExecutor:
     # Deliberately narrow: a generic command executor exposes the ability to
     # run anything, so it must be enabled by an explicit, reviewed decision.
     allowed_actions = frozenset({"run_command", "run_tests"})
+
+    # Process-group control is POSIX-only. On a platform without it we cannot
+    # honestly promise that a timeout leaves nothing running, so this adapter
+    # refuses to run rather than silently under-killing. No Windows branch is
+    # provided on purpose: it could never be exercised by the WSL-only test
+    # suite, and untested cleanup code is worse than a clear refusal.
+    supports_process_groups: bool = hasattr(os, "killpg")
 
     def __init__(
         self,
@@ -112,6 +121,14 @@ class SubprocessExecutor:
 
         started = time.monotonic()
         proc = None
+        child_pid = None  # set the moment the child exists, even if Popen raises
+        if not self.supports_process_groups:
+            # Fail closed, before anything is started.
+            shutil.rmtree(sandbox, ignore_errors=True)
+            raise WorkerLostError(
+                "subprocess-executor needs POSIX process groups to guarantee a "
+                "timeout leaves nothing running; os.killpg is unavailable here"
+            )
         try:
             with open(out_path, "wb") as out_f, open(err_path, "wb") as err_f:
                 proc = subprocess.Popen(
@@ -120,11 +137,21 @@ class SubprocessExecutor:
                     stdout=out_f,
                     stderr=err_f,
                     shell=False,
+                    # The child becomes the leader of its OWN process group, so
+                    # the whole tree can be signalled as one unit. Without this
+                    # the grandchild inherits the parent's group and survives
+                    # proc.kill(), which only ever signals the direct child.
+                    start_new_session=True,
                 )
+                # Record the pid as soon as the child exists. `proc` alone is not
+                # enough: Popen can raise AFTER the fork has already happened, and
+                # a partially-assigned `proc` leaves us with a live process and no
+                # handle on it - the one case where cleanup silently does nothing.
+                child_pid = proc.pid
                 try:
                     proc.wait(timeout=self.timeout_seconds)
                 except subprocess.TimeoutExpired:
-                    proc.kill()
+                    _kill_process_tree(proc, child_pid)
                     proc.wait()
                     self._write_meta(meta_path, command, started, -1, "timeout")
                     if not self.keep_workspace:
@@ -140,10 +167,27 @@ class SubprocessExecutor:
                     )
         except Exception as e:  # noqa: BLE001
             # Executor itself broke after (possibly) starting work: unknown.
+            # `proc` may be None even though a child was forked, so the pid is
+            # the reliable handle here.
+            _kill_process_tree(proc, child_pid)
             self._write_meta(meta_path, command, started, -1, f"error:{e}")
             if not self.keep_workspace:
                 shutil.rmtree(sandbox, ignore_errors=True)
             raise WorkerLostError(f"subprocess executor failed: {e}")
+        finally:
+            # KeyboardInterrupt and SystemExit derive from BaseException, so
+            # the `except Exception` above cannot see them. Without this block
+            # a Ctrl-C during wait() abandons a live process tree. This is the
+            # only place that runs on every exit path, and it is NOT redundant
+            # with the except branch: measured, removing only one of the two
+            # still cleans up, and only removing both lets a grandchild live.
+            if child_pid is not None and (proc is None or proc.poll() is None):
+                _kill_process_tree(proc, child_pid)
+                if proc is not None:
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        pass
 
         exit_code = proc.returncode
         self._write_meta(meta_path, command, started, exit_code, "done")
@@ -185,6 +229,43 @@ class SubprocessExecutor:
             ),
             encoding="utf-8",
         )
+
+
+def _kill_process_tree(proc, pid=None) -> None:
+    """SIGKILL the whole process group the child leads.
+
+    The child is started with start_new_session=True, so its pgid equals its
+    pid and signalling the group reaches every descendant. SIGKILL rather than
+    SIGTERM because the point of a timeout is that the work is already late;
+    a child that traps SIGTERM would otherwise keep running.
+
+    `pid` is passed separately because `proc` can be unusable exactly when
+    cleanup matters most: Popen may raise after the fork, leaving a live
+    process and no Popen object. Falling back to the raw pid keeps that case
+    covered.
+
+    Falls back to the single child if the group is already gone, so this is
+    safe to call from a finally block on any exit path.
+    """
+    target = pid if pid is not None else getattr(proc, "pid", None)
+    if target is None:
+        return
+    try:
+        os.killpg(os.getpgid(target), signal.SIGKILL)
+        return
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
+    if proc is not None:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+    else:
+        # no Popen object to fall back on; signal the pid directly
+        try:
+            os.kill(target, signal.SIGKILL)
+        except OSError:
+            pass
 
 
 def _copytree_into(src: Path, dst: Path) -> None:

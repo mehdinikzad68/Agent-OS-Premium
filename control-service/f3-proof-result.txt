@@ -1,0 +1,6 @@
+0. server up, subprocess executor enabled
+1. job job-1dfc0381f3e1 carries a command that spawns a grandchild
+2. approved and granted like any other job
+FAIL: the server stopped answering during dispatch (RemoteDisconnected). With start_new_session removed, killpg targets the wrong group and the service is killed - which is itself the defect.
+
+NOT PROVEN - F3 is not fixed end to end

@@ -103,10 +103,11 @@ def cmd_serve(args) -> int:
             "           POST /api/jobs/<id>/dispatch. Approval enforcement is "
             "Phase 5 and is not implemented.\n"
             "           Also unbounded: the child may write outside the "
-            "sandbox, and a timeout\n"
-            "           kills only the direct child, not its grandchildren. "
-            "The working copy\n"
-            "           is not a security boundary."
+            "sandbox. A timeout does\n"
+            "           kill the whole process group (SIGKILL to the child's "
+            "group), so no descendant\n"
+            "           outlives the call - but the working copy is not a "
+            "security boundary."
         )
         print(bypass)
         # Same fact as a structured event, so it is queryable later and not
@@ -122,7 +123,11 @@ def cmd_serve(args) -> int:
             approval_gate=False,
             approval_gate_planned_phase=5,
             writes_bounded=False,
-            timeout_kills_process_group=False,
+            # True since F3: the child is started with start_new_session=True
+            # and a timeout SIGKILLs the whole process group, so no descendant
+            # outlives the call. This flag was False, and it was honest then;
+            # leaving it False after the fix would misreport the new behaviour.
+            timeout_kills_process_group=True,
         )
 
     server = serve(service, host=args.host, port=args.port, token=token, insecure=args.insecure)
