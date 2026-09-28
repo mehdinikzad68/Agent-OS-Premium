@@ -118,12 +118,28 @@ class Store:
         # worker threads while the connection is opened on the main thread.
         # The lock serializes all DB access (single-writer control plane).
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA synchronous=FULL")
-        self.conn.execute("PRAGMA foreign_keys=ON")
-        self._lock = threading.RLock()
-        self._init_schema()
+        # Everything after the connect can raise - a PRAGMA on a corrupt file,
+        # a schema that does not apply to what is already there. Measured: a
+        # failing _init_schema left the connection open, and because __init__
+        # never returned the caller has no handle to close it with. So the
+        # whole initialisation is inside the try, and the connection is closed
+        # on any failure rather than left to the garbage collector.
+        try:
+            self.conn.row_factory = sqlite3.Row
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=FULL")
+            self.conn.execute("PRAGMA foreign_keys=ON")
+            self._lock = threading.RLock()
+            self._init_schema()
+        except BaseException:
+            # BaseException, not Exception: a Ctrl-C during startup must not
+            # leak the handle either, and this is the same reasoning the
+            # executor's finally block uses for a live process tree.
+            try:
+                self.conn.close()
+            except sqlite3.Error:
+                pass
+            raise
 
     def close(self) -> None:
         with self._lock:

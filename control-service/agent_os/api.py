@@ -622,8 +622,22 @@ def serve(
         )
     api = AgentOSApi(service, None if insecure else token)
     handler = make_handler(api, None if insecure else token)
+    # The server is bound by its own constructor, so from this line the socket
+    # is open. Anything that raises before the caller receives the handle
+    # leaves it bound until the garbage collector notices - and a Ctrl-C in
+    # that window means the port stays taken with nothing owning it, which the
+    # next start then reports as "address already in use" for no visible
+    # reason. So the post-bind configuration is inside the try, and the server
+    # is closed if it fails.
     server = ThreadingHTTPServer((host, port), handler)
-    server.daemon_threads = True
+    try:
+        server.daemon_threads = True
+    except BaseException:
+        try:
+            server.server_close()
+        except OSError:
+            pass
+        raise
     return server
 
 

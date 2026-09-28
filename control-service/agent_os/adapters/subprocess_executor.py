@@ -21,6 +21,7 @@ when the caller passes an explicit flag. It runs plain OS commands (e.g.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import signal
@@ -38,6 +39,54 @@ from ..models import (
     decode_command,
 )
 from ..paths import canonicalize, is_within
+
+_log = logging.getLogger(__name__)
+
+# Cleanup failures are recorded here as well as logged. A run directory that
+# could not be deleted is a fact about the machine's state, and the only way
+# it can be acted on is if it is retrievable without attaching a debugger to a
+# process that has already exited. Keyed by sandbox path.
+cleanup_failures: list[dict] = []
+_CLEANUP_LOG_CAP = 200
+
+
+def _discard_sandbox(sandbox: Path, why: str) -> bool:
+    """Delete a run directory, and never let a failed delete disappear.
+
+    `shutil.rmtree(..., ignore_errors=True)` swallows every failure, so a
+    directory that cannot be removed - a file still held open, a permission
+    changed underneath us, a read-only mount - leaves the sandbox root growing
+    with nothing anywhere recording that the delete was attempted and failed.
+    Measured: rmtree on a read-only directory returns without raising and the
+    directory survives, and the caller has no way to tell that from success.
+
+    So: log it, record it in `cleanup_failures`, and report the outcome. The
+    caller still proceeds - a leftover directory is not a reason to fail a run
+    whose result is already known - but the failure is visible afterwards.
+    """
+    try:
+        shutil.rmtree(sandbox)
+        return True
+    except OSError as e:
+        rec = {
+            "sandbox": str(sandbox),
+            "why": why,
+            "error": f"{type(e).__name__}: {e}",
+            "still_present": sandbox.exists(),
+        }
+        _log.warning("sandbox cleanup failed: %s", rec)
+        cleanup_failures.append(rec)
+        del cleanup_failures[:-_CLEANUP_LOG_CAP]
+        return False
+
+
+def failed_cleanups() -> list[dict]:
+    """Cleanup failures recorded so far, newest last. Read-only."""
+    return list(cleanup_failures)
+
+
+def clear_failed_cleanups() -> None:
+    cleanup_failures.clear()
 
 
 class SubprocessExecutor:
@@ -128,7 +177,7 @@ class SubprocessExecutor:
             if self.source_workspace.exists():
                 _copytree_into(self.source_workspace, sandbox)
         except Exception as e:  # noqa: BLE001
-            shutil.rmtree(sandbox, ignore_errors=True)
+            _discard_sandbox(sandbox, "copy-failed")
             raise WorkerLostError(f"failed to prepare disposable workspace: {e}")
 
         out_path = sandbox / ".agent-os.stdout.log"
@@ -140,7 +189,7 @@ class SubprocessExecutor:
         child_pid = None  # set the moment the child exists, even if Popen raises
         if not self.supports_process_groups:
             # Fail closed, before anything is started.
-            shutil.rmtree(sandbox, ignore_errors=True)
+            _discard_sandbox(sandbox, "no-process-group-support")
             raise WorkerLostError(
                 "subprocess-executor needs POSIX process groups to guarantee a "
                 "timeout leaves nothing running; os.killpg is unavailable here"
@@ -171,7 +220,7 @@ class SubprocessExecutor:
                     proc.wait()
                     self._write_meta(meta_path, command, started, -1, "timeout")
                     if not self.keep_workspace:
-                        shutil.rmtree(sandbox, ignore_errors=True)
+                        _discard_sandbox(sandbox, "timeout")
                     return WorkerOutcome(
                         status="completed_missing_evidence",
                         evidence={
@@ -188,7 +237,7 @@ class SubprocessExecutor:
             _kill_process_tree(proc, child_pid)
             self._write_meta(meta_path, command, started, -1, f"error:{e}")
             if not self.keep_workspace:
-                shutil.rmtree(sandbox, ignore_errors=True)
+                _discard_sandbox(sandbox, "executor-error")
             raise WorkerLostError(f"subprocess executor failed: {e}")
         finally:
             # KeyboardInterrupt and SystemExit derive from BaseException, so
@@ -224,7 +273,7 @@ class SubprocessExecutor:
         }
 
         if not self.keep_workspace:
-            shutil.rmtree(sandbox, ignore_errors=True)
+            _discard_sandbox(sandbox, "completed")
 
         # exit 0 with a recognizable passing-test report => verified.
         if exit_code == 0 and evidence["test_report"]:
@@ -325,12 +374,61 @@ def _find_escaping_links(src: Path) -> list[str]:
     return sorted(escaping)
 
 
+# One list, used at both levels of the copy. It was previously only passed to
+# the recursive copytree, which left the same names unfiltered at the root.
+_COPY_IGNORED = (".git", "__pycache__", ".testtmp")
+
+
 def _copytree_into(src: Path, dst: Path) -> None:
-    """Copy src contents into dst (dst must exist and be empty-ish)."""
+    """Copy src contents into dst (dst must exist and be empty-ish).
+
+    Symlinks are not followed, and a link that leaves `src` is refused by
+    _find_escaping_links before this runs. What is left to handle here is a
+    link that stays INSIDE the workspace - which is legal, and which used to
+    break the copy: `child.is_dir()` follows a link, so a link pointing at an
+    ancestor was recursed into until the OS gave up with
+
+        OSError: [Errno 40] Too many levels of symbolic links
+
+    which reached the operator as a raw errno inside a generic "failed to
+    prepare disposable workspace" message, with no indication of which path
+    caused it.
+
+    Measured: this is a robustness defect, not a leak. A link to a sibling
+    directory is an escape and is refused by the guard, so the only links that
+    reach this function point inward and cannot exfiltrate anything.
+
+    For a symlink, copy the LINK ITSELF rather than its target. The link is
+    metadata about the project, not content: what matters is that the command
+    can see that the entry exists and where it points, and that a link to an
+    ancestor cannot send the copy into an unbounded recursion. F5's guard has
+    already refused any link that leaves the workspace, so a link reaching
+    here points inward and points at content the copy is taking anyway.
+
+    symlinks=True on the recursive copy is what makes the nested case work.
+    Leaving it False would follow a link found INSIDE a subdirectory - the
+    same defect one level down, which is how the first version of this fix
+    passed its own ancestor-link test and still recursed to ELOOP.
+    """
     for child in src.iterdir():
+        # The ignore list applied only to the RECURSIVE copytree, so a .git or
+        # __pycache__ sitting at the TOP level of the workspace was copied into
+        # every sandbox - measured, and true of the code before this change as
+        # well. The same skip applies here, from one place, so the two levels
+        # cannot drift apart again.
+        if child.name in _COPY_IGNORED:
+            _log.info("copy skipped %s at the workspace root", child.name)
+            continue
         target = dst / child.name
+        if child.is_symlink():
+            _log.info("copy kept a symlink, not its target: %s -> %s", child,
+                      os.readlink(child))
+            os.symlink(os.readlink(child), target)
+            continue
         if child.is_dir():
-            shutil.copytree(child, target, ignore=shutil.ignore_patterns(".git", "__pycache__", ".testtmp"))
+            shutil.copytree(child, target,
+                            ignore=shutil.ignore_patterns(*_COPY_IGNORED),
+                            symlinks=True)
         else:
             shutil.copy2(child, target)
 

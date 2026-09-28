@@ -206,16 +206,45 @@ class LinksThatStayInsideAreFine(SymlinkTestBase):
         # must return promptly rather than walking forever
         self.assertEqual(_find_escaping_links(self.src), [])
 
-        # The guard allows it - the target is inside - but the COPY does not.
-        # _copytree_into tests child.is_dir(), which follows a link, so it
-        # recurses through 'up' and dies on ELOOP. That is a pre-existing
-        # defect unrelated to escaping links, logged as F9; what matters here
-        # is that it fails CLOSED and fast rather than hanging or copying
-        # anything outside. This test pins that property, not the happy path.
+        # The guard allows it - the target is inside - and since F9 the COPY
+        # handles it too: a link is copied AS a link, so there is no
+        # recursion and no ELOOP. This test pinned the old behaviour, which
+        # failed closed with a raw errno; it now pins the fixed behaviour,
+        # which is that such a project simply runs.
+        #
+        # The safety claim is unchanged and still asserted above: the guard
+        # does not hang, and does not report an inside link as an escape.
         ex = self._executor()
-        with self.assertRaises(WorkerLostError) as ctx:
-            ex.run(self._job([sys.executable, "-c", "print('never runs')"], ex), 1)
-        self.assertIn("prepare", str(ctx.exception).lower())
+        out = ex.run(self._job(
+            [sys.executable, "-c", "print('the run proceeds')"], ex), 1)
+        self.assertEqual(out.evidence.get("exit_code"), 0)
+        self.assertIn("the run proceeds", out.evidence["diff"])
+
+    @unittest.skipIf(POSIX_ONLY, "symlink creation is POSIX-shaped here")
+    def test_a_self_referential_link_never_lands_outside_the_sandbox(self):
+        """The link is preserved, so nothing points out of the tree.
+
+        F9 copies the link rather than its target. That is safe here only
+        because the guard has already refused anything escaping - so the
+        preserved link necessarily points at content the copy is taking
+        anyway. This asserts the link is inert, not merely present.
+        """
+        (self.src / "sub").mkdir()
+        (self.src / "sub" / "real.txt").write_text("real\n", encoding="utf-8")
+        os.symlink(str(self.src), str(self.src / "sub" / "up"))
+
+        ex = self._executor(keep_workspace=True)
+        out = ex.run(self._job(
+            [sys.executable, "-c", "print('ok')"], ex), 1)
+        self.assertEqual(out.evidence.get("exit_code"), 0)
+        sandbox = pathlib.Path(out.evidence["sandbox"])
+        try:
+            kept = sandbox / "sub" / "up"
+            self.assertTrue(kept.is_symlink(),
+                            "the link must be preserved, not followed")
+            self.assertEqual(os.readlink(kept), str(self.src))
+        finally:
+            shutil.rmtree(sandbox, ignore_errors=True)
 
     @unittest.skipIf(POSIX_ONLY, "symlink creation is POSIX-shaped here")
     def test_the_walk_does_not_descend_through_links(self):

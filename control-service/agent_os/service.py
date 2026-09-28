@@ -178,23 +178,29 @@ class ControlService:
         return removed
 
     def register_project(
-        self,
-        name: str,
-        environment: str,
-        root: str,
-        scope: Optional[str] = None,
+            self,
+            name: str,
+            environment: str,
+            root: str,
     ) -> Project:
         """Validate a project root and record it. Read-only against the disk.
 
         Two gates, in this order. The lexical one is pure and cheap; the disk
         one is what sees a symlink escaping the scope. Both must pass.
 
-        scope is a parameter rather than a lookup so a caller can register
-        against an explicit root, but the default comes from configuration
-        (project_scope) and never from a product path.
+        The allowed scope is NOT a parameter. It used to be, and the HTTP handler
+        never passed it, so no caller could supply one - measured across all nine
+        call sites. A parameter that no caller can reach reads as a control the
+        operator can turn, and costs the next reader an experiment to discover
+        otherwise. More importantly, letting a client name its own boundary is the
+        wrong direction: the scope is a property of the deployment, configured
+        through AGENT_OS_PROJECT_SCOPE, and a caller asking to widen it is asking
+        to remove the check that is protecting it.
+
+        So the scope comes from configuration or not at all, and a project whose
+        root falls outside it is refused.
         """
-        if scope is None:
-            scope = project_scope()
+        scope = project_scope()
         if scope is None:
             log_event(_log, logging.WARNING, "project.rejected",
                       reason=REASON_SCOPE_UNSET, root=root[:200])

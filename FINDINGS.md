@@ -34,11 +34,11 @@ matters as much as the list: a reviewer's report is a hypothesis, not a finding.
 | F3 | `kill()` does not kill the process group; a backgrounded child survives the timeout | medium | **CLOSED** — process group + SIGKILL on every exit path |
 | F4 | The `command` type annotation was neither a guard nor correct | medium | **CLOSED** — `cddcb46` (edge validation) + `6079c22` (storage) |
 | F5 | `copytree` follows symlinks, so outside content was copied in and returned by the evidence endpoint | high | **CLOSED** — refuse escaping links before the copy |
-| F6 | Cleanup failures are silent (`ignore_errors=True`, four sites) | low | **OPEN** |
-| F7 | Two resource leaks: sqlite connect, and a window before `try/finally` | low | **OPEN** |
+| F6 | Cleanup failures are silent (`ignore_errors=True`, five sites) | low | **CLOSED** — every failure is recorded and retrievable |
+| F7 | Two resource leaks: sqlite connect, and a window before `try/finally` | low | **CLOSED** — both closed on any failure, including Ctrl-C |
 | F8 | `jobs.command` could not survive storage at all | — | **CLOSED** — `6079c22` |
-| F9 | `_copytree_into` recurses through a link to an ancestor until ELOOP; fails closed but with a raw OSError | low | **OPEN** — refuse to descend through a link |
-| F10 | `POST /api/projects` ignores the `scope` parameter its service method accepts | informational | **OPEN** — document, or pass it |
+| F9 | `_copytree_into` recurses through a link to an ancestor until ELOOP; fails closed but with a raw OSError | low | **CLOSED** — links are copied as links, never followed |
+| F10 | `POST /api/projects` ignores the `scope` parameter its service method accepts | informational | **CLOSED** — the parameter is removed, not wired up |
 
 `SCHEMA_VERSION` is 2 and must stay 2 for the work above; F1 and F8 both needed
 no migration because `scope_json` and `command` are existing columns.
@@ -205,24 +205,97 @@ Closed by two commits: `cddcb46` validates the shape at the HTTP edge with
 permanent tests, and `6079c22` makes the stored form canonical JSON so it can
 survive sqlite at all. The annotation is now true rather than aspirational.
 
-## F5 — `copytree` follows symlinks — OPEN
+## F5 — `copytree` follows symlinks — CLOSED
 
 `shutil.copytree` defaults to `symlinks=False`, so a symlink is followed and the
 target's **contents are copied**. A project containing `ln -s ~/.ssh link`
 copies the keys into a directory the job can read and whose output can be
 reported. Not an escape — a copy and a disclosure.
 
-## F6 — cleanup failures are silent — OPEN
+## F6 — cleanup failures are silent — CLOSED
 
-Four `rmtree(..., ignore_errors=True)` sites. A failed delete is swallowed and
-garbage accumulates with no signal. `keep_workspace=True` also has no ceiling.
+### Measured
 
-## F7 — two resource leaks — OPEN
+Five `rmtree(..., ignore_errors=True)` sites, not four — the register was one
+short. Measured on a directory whose parent is read-only:
 
-- `store.py` — the sqlite connection is opened with no `try/finally`, so a
-  schema failure leaks it.
-- The socket setup path has a small window before `try/finally`, so `Ctrl-C`
-  during startup leaves it bound.
+    rmtree(ignore_errors=True) raised nothing: True
+    the dir survived: True
+
+and nothing anywhere bounds the sandbox root, so `keep_workspace=True`
+accumulates without a ceiling.
+
+### Fixed
+
+`_discard_sandbox(sandbox, why)` replaces all five. It logs at WARNING, appends
+to a module-level `cleanup_failures` list (capped, oldest dropped first), and
+returns whether the delete worked. `failed_cleanups()` hands out a copy so a
+caller cannot erase the record; `clear_failed_cleanups()` is for tests.
+
+Each site passes a distinct reason — `copy-failed`, `no-process-group-support`,
+`timeout`, `executor-error`, `completed` — because "which path failed" is the
+entire content of the record, and a copy-paste that reused one label would hide
+exactly that. A test asserts each label is used exactly once.
+
+A run whose cleanup failed still returns its result: a leftover directory is
+not a reason to fail a run whose outcome is already known. The failure is
+visible afterwards, which is the point.
+
+### Evidence, and what the first attempt got wrong
+
+The first version of the tests covered only the happy path. Mutation checking
+reported 7 survivors, and measuring them first — the F5 lesson — showed this
+time they were REAL gaps, not junk mutations: the timeout, executor-error,
+fail-closed and copy-failed paths had no test at all. So every path is now
+driven, and the mutation run is 13/13.
+
+Two defects in my own tests along the way, both invisible to a green suite:
+`addCleanup` runs AFTER `tearDown`, so the patched `rmtree` was still active
+during cleanup; and a cap test that sliced the list by hand never exercised the
+cap line it claimed to test.
+
+The `keep_workspace` ceiling was deliberately NOT added. It is a real gap, but
+it is a policy decision about disk usage, not a defect, and F6 as written was
+about failures being invisible. Recorded here rather than silently folded in.
+
+## F7 — two resource leaks — CLOSED
+
+### Measured, both of them really happen
+
+store.py, with `_init_schema` forced to fail:
+
+    open fds on the db dir before: 0, after: 1
+    LEAK: True
+
+The caller has no handle to close it with, because `__init__` never returned.
+
+api.py, the socket: `ThreadingHTTPServer` binds inside its own constructor, so
+from that line the port is held. Measured directly: with the server object left
+open after a post-bind failure the port stays held; with `server_close()` on
+the failure path a probe socket binds and listens. So a port probe IS a valid
+witness — which is what made the first version of the test checkable.
+
+### Fixed
+
+Both use `except BaseException`, not `except Exception`. A Ctrl-C during startup
+is the realistic case, and `KeyboardInterrupt` is not an `Exception` — the same
+reasoning F3's `finally` block exists. In store.py the close-on-failure is
+itself wrapped, so a close that raises cannot mask the original startup error.
+
+### Evidence, and a witness that measured the wrong thing
+
+12 tests, mutation 8/8.
+
+The socket test passed for a week of my own edits because it was broken in a
+subtle way: it closed the fake servers and THEN probed the port, so it was
+measuring its own cleanup rather than the code's. Running the mutation by hand
+showed `server_close()` had been called zero times while the test still passed.
+The port is now probed before any cleanup, and the call is asserted directly.
+
+A second, sharper lesson: raising inside the fake's `__init__` escapes BEFORE
+`serve()`'s `try` — a different path from the one the finding is about, and it
+failed on healthy code. The post-bind assignment has to be what raises, which
+is what a descriptor on the subclass does.
 
 ---
 
@@ -296,7 +369,7 @@ and `f5_proof.py` over real HTTP - PROVEN on the real code, NOT PROVEN with the
 guard disabled, where the run completed and `password=hunter2` came back in the
 evidence body.
 
-## F9 — the copy recurses through a link to an ancestor — OPEN
+## F9 — the copy recurses through a link to an ancestor — CLOSED
 
 Found by F5's own test, not by review. `_copytree_into` tests `child.is_dir()`,
 which FOLLOWS a symlink, so a link pointing at an ancestor is recursed into
@@ -304,24 +377,58 @@ until the OS refuses:
 
     shutil.Error: [Errno 40] Too many levels of symbolic links
 
-It fails closed and fast - no hang, nothing copied outside - so this is a
-usability and robustness defect, not a containment hole. A self-referential
-link inside the workspace is legal, and the guard correctly allows it, but the
-run then dies with a raw OSError surfaced as a prepare failure.
+It fails closed and fast, so it is a robustness defect, not a containment hole.
+Re-measured for this pass to be sure the sibling case was not worse: a link to
+a sibling directory IS an escape and F5's guard refuses it, so the only links
+that reach the copy point inward and cannot exfiltrate anything.
 
-Fix shape: make the copy refuse to descend through a link at all, the same way
-the guard refuses to walk through one. Not started.
+### Fixed — and the first attempt was wrong
 
-## F10 — POST /api/projects ignores a caller-supplied scope — OPEN
+A symlink is now copied AS a link (`os.symlink(os.readlink(child), target)`),
+and the recursive `copytree` gets `symlinks=True`.
 
-Found while writing F5's proof. `register_project` accepts a `scope` parameter
-and documents that the default comes from configuration, but the HTTP handler
-never passes it (api.py, `_post` for `/api/projects`), so the only way to widen
-the allowed root is the `AGENT_OS_PROJECT_SCOPE` environment variable. This is
-fail-closed and arguably deliberate - the client does not get to choose its own
-boundary - but the parameter existing while the handler ignores it is a trap for
-the next reader, and it is undocumented at the API surface.
+The first version skipped links at the top level and left the recursive copy on
+its default — so a link INSIDE a subdirectory was still followed, the same
+defect one level down. It passed its own ancestor-link test. The nested test
+that now exists is the one that would have caught it.
 
-Not security-relevant: a caller can only ever be MORE restricted by omission.
-Recorded so the next person writing a proof or a client does not spend an hour
-rediscovering it.
+### A second defect found while fixing this one
+
+The ignore list was passed only to the recursive `copytree`, never applied at
+the top level, so a `.git` or `__pycache__` at the workspace root was copied
+into every sandbox. Verified against `git show HEAD` to be a pre-existing bug
+and not a regression from this change. Both levels now read one
+`_COPY_IGNORED` constant, so they cannot drift apart again.
+
+### Evidence
+
+15 tests covering F9 and F10 together, mutation 9/9. The nested-link case and
+the `symlinks=True` argument each have their own test, because "the top level
+works" is exactly the claim that hid the first bug.
+
+## F10 — POST /api/projects ignores a caller-supplied scope — CLOSED
+
+Found while writing F5's proof. `register_project` accepted a `scope` parameter
+and documented that the default came from configuration — but the HTTP handler
+never passed it. Measured across all nine call sites: not one supplies it, so
+the parameter was unreachable from the API and from the CLI.
+
+The fail-closed direction was never in doubt — a caller can only be more
+restricted by the omission. The cost was that the signature advertised a
+control nobody could turn, which cost an hour of debugging a proof.
+
+### Fixed by removing it, not by wiring it up
+
+Passing the caller's scope through would have been the obvious "fix" and the
+wrong one: it lets a client name its own boundary, which is the opposite of what
+a scope is for. The scope is a property of the deployment, configured through
+`AGENT_OS_PROJECT_SCOPE`. So the parameter is gone, and the docstring says why
+so the next reader does not re-add it as an improvement.
+
+A test walks the tree and fails if any caller passes `scope=` again, and another
+asserts the projects endpoint does not read a scope field.
+
+`~/workspace` exists on this machine and `project_scope()` falls back to it, so
+a test that only unsets the environment variable measures the wrong branch.
+The unset-scope test patches the resolver instead — that branch was the one
+surviving mutant (M9) after the first mutation run.
