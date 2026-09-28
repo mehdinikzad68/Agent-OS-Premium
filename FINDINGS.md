@@ -309,6 +309,34 @@ which branch is untested — and the cheap way to find it is to look for the
 documented-but-unexercised path: a parameter default, an error branch, a value
 a caller always supplies explicitly.
 
+## Phase gates
+
+The roadmap rule is one topic per phase, and no phase starts before the previous
+one's exit criteria are met **and the owner has accepted them**. Acceptance is a
+human decision and is recorded here so the next session does not re-ask.
+
+### Phase 2 — Project Registry — ACCEPTED 2026-09-28 by the owner
+
+Measured on the running product before acceptance, not read off the code:
+
+| Exit criterion | Result |
+|---|---|
+| a missing path is refused | HTTP 400 |
+| a path outside the configured scope is refused | HTTP 400 |
+| a `../` escape is refused | HTTP 400 |
+| a registered project survives a restart | 1 project before and after |
+| registration causes no mount and no command execution | no `subprocess` / `Popen` / `docker` / `mount` / `os.system` on that path |
+
+With Phase 2 accepted, Phase 3 (Tool discovery and explicit registration) is
+unblocked. Its own exit criteria, from the roadmap:
+
+1. discovery that installs nothing and writes no file
+2. an unknown path or non-standard output yields status `unknown`, not a guess
+3. registering **and removing** a tool, reviewable from the UI
+
+and the constraint stated by the roadmap itself: a discovered tool is not
+thereby allowed to run.
+
 ## Method notes worth keeping
 
 - The `agy` reviewers were wrong or unhelpful about 40% of the time. One
