@@ -7,7 +7,7 @@ decided before this can be called integrated with real agent runtimes.
 
 | Capability | How it is verified | Result |
 |---|---|---|
-| Enforcement rules A1–A10 + CLI gates | `run_tests.py` (32 tests) | 32/32 pass on Python 3.14 **and** 3.11 |
+| Enforcement rules A1–A10 + CLI gates | `run_tests.py` (227 tests) | 227/227 pass on Python 3.14.4 |
 | Full product flow over real HTTP | `e2e_verify.py`, 11 steps | PASS (see `e2e-result.txt`) |
 | Token auth fail-closed, loopback bind | `tests/test_api.py` | pass |
 | UI shell public / API protected | `tests/test_api.py::UiServingTest` | pass |
@@ -66,7 +66,12 @@ Reproduce: `cd control-service && python run_tests.py && python e2e_verify.py &&
   a passing-looking line can produce a "test report". Treat verified state as
   *"claimed and plausible"*, not proof — real adapters must supply structured
   reports.
-- Windows is the tested platform (3.11 + 3.14). Linux/WSL untested.
+- Linux/WSL is the tested platform (Python 3.14.4, Ubuntu-26.04 in WSL2) —
+  every count in this document was produced there. Windows is NOT verified:
+  no test run on native Windows is recorded, so treat a Windows-specific path
+  (drive letters, path separators, process spawning) as unproven. The earlier
+  claim of "Windows tested, 3.11 + 3.14" was false on both counts: 3.11 is
+  not installed, and nothing in the recorded runs was on Windows.
 - The UI requires the token and cannot itself perform approvals for you — that is
   intentional (human decision), but it means the dashboard is not "one-click".
 
