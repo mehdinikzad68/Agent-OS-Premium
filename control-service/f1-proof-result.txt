@@ -1,5 +1,5 @@
-0. mission mission-799dcbacd1cf
-1. scope as the human receives it: {"executor": "subprocess-executor", "workspace_paths": ["/tmp/f1-proof-y5ljqe45/src"], "actions": ["run_tests"], "command": ["/usr/bin/python3", "calc.py"]}
+0. mission mission-b75d7966c436
+1. scope as the human receives it: {"executor": "subprocess-executor", "workspace_paths": ["/tmp/f1-proof-0smmu1qw/src"], "actions": ["run_tests"], "command": ["/usr/bin/python3", "calc.py"]}
    the command IS visible, as argv: ['/usr/bin/python3', 'calc.py']
    BEFORE the fix this scope had only executor/workspace_paths/actions,
    so a grant meant 'run_tests in /w' with the effect being whatever
@@ -12,4 +12,8 @@
 3. honestly approved job dispatched: state=completed_verified
    the real subprocess ran and its stdout reached the API
    the live workspace is untouched
-VERDICT: PROVEN - the human's approval now names the command, a body-supplied command is ignored and recorded, and a real subprocess still runs end to end
+4. stored scope now names: ["/usr/bin/python3","attacker.py"]
+   while the job's own command is: ["/usr/bin/python3", "calc.py"]
+   dispatch of the tampered grant returned 200: {"receipt": {"job_id": "job-f0e8147789db", "attempt": 1, "final_state": "completed_verified", "duplicated": false}, "job": {"id": "job-f0e8147789db", "mission_id": "mission-9ba4d8259e96", "title": "gr
+FAIL: a grant naming a DIFFERENT command was accepted: 200 {"receipt": {"job_id": "job-f0e8147789db", "attempt": 1, "final_state": "completed_verified", "duplicated": false}, "job": {"id": "job-f0e8147789db", "mission_id": "mission-9ba4d8259e96", "title": "grant that will be tampered with", "proposed_by": "planner", "executor": "subprocess-executor", "works
+VERDICT: NOT PROVEN - F1 is not fixed end to end

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -186,8 +187,63 @@ def main() -> None:
             fail("the live workspace was modified")
         log("   the live workspace is untouched")
 
-        finish(True, "PROVEN - the human's approval now names the command, a "
-                     "body-supplied command is ignored and recorded, and a real "
+        # --- 4. a grant that no longer names the job's command is refused
+        # Steps 1-3 only ever dispatched an HONESTLY approved job. That left a
+        # real hole in this proof: with policy.py's command check replaced by
+        # `if False`, every step above still passed and the proof still said
+        # PROVEN. A proof that cannot go red is not evidence.
+        #
+        # The job below is approved, granted, and then its STORED scope is
+        # rewritten to name a different command - the row a confused writer or
+        # a pre-fix insert would leave. The manifest hash still matches,
+        # because the job did not change, so the refusal can only come from
+        # F1's own check.
+        st, mission4 = call(base, token, "POST", "/api/missions",
+                            {"title": "F1 tampered grant"})
+        mid4 = mission4["id"]
+        st, job4 = call(base, token, "POST", "/api/jobs", {
+            "mission_id": mid4, "title": "grant that will be tampered with",
+            "executor": "subprocess-executor", "workspace_paths": [str(src)],
+            "actions": ["run_tests"], "proposed_by": "planner",
+            "command": [sys.executable, "calc.py"]})
+        jid4 = job4["id"]
+        st, appr4 = call(base, token, "POST", "/api/approvals", {"job_id": jid4})
+        st, dec4 = call(base, token, "POST",
+                        f"/api/approvals/{appr4['id']}/decide",
+                        {"decision": "granted"})
+        if st not in (200, 201):
+            fail(f"granting job4 returned {st}: {dec4}")
+
+        con = sqlite3.connect(str(db))
+        row = con.execute("SELECT scope_json FROM approvals WHERE id=?",
+                          (appr4["id"],)).fetchone()
+        if row is None:
+            fail(f"no stored approval row for {appr4['id']}")
+        scope4 = json.loads(row[0])
+        scope4["command"] = json.dumps([sys.executable, "attacker.py"],
+                                       separators=(",", ":"))
+        con.execute("UPDATE approvals SET scope_json=? WHERE id=?",
+                    (json.dumps(scope4), appr4["id"]))
+        con.commit()
+        con.close()
+        log(f"4. stored scope now names: {scope4['command']}")
+        log(f"   while the job's own command is: "
+            f"{json.dumps([sys.executable, 'calc.py'])}")
+
+        st, refused = call(base, token, "POST", f"/api/jobs/{jid4}/dispatch", {})
+        log(f"   dispatch of the tampered grant returned {st}: "
+            f"{json.dumps(refused)[:200] if not isinstance(refused, str) else refused[:200]}")
+        if st < 400:
+            fail(f"a grant naming a DIFFERENT command was accepted: "
+                 f"{st} {json.dumps(refused)[:300] if not isinstance(refused, str) else refused[:300]}")
+        if "command_not_in_scope" not in json.dumps(refused):
+            fail(f"refused, but not by the command check: {refused}")
+        log("   REFUSED with command_not_in_scope - the check that this proof")
+        log("   exists to prove actually fired. Removing it lets this job run.")
+
+        finish(True, "PROVEN - the human's approval names the command, a "
+                     "body-supplied command is ignored and recorded, a grant "
+                     "whose command was changed is refused, and a real "
                      "subprocess still runs end to end")
     finally:
         proc.terminate()
