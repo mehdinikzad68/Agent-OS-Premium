@@ -242,6 +242,51 @@ class Project:
     created_at: str
 
 
+class ToolRejected(Exception):
+    """A tool registration was refused. Carries a machine-readable reason so
+    the HTTP layer can map it to a status, exactly as ProjectRejected does."""
+
+    def __init__(self, reason: str, message: str = ""):
+        super().__init__(message or reason)
+        self.reason = reason
+
+
+@dataclass
+class Tool:
+    """A tool the owner has reviewed and recorded.
+
+    `grants_execution` is a constant False, not a stored flag that could be set
+    later: discovery is a report, and registration is a record of what the owner
+    saw. Nothing in the executor consults this table, and the field exists so
+    that any future code reading it has to answer for itself.
+
+    `confidence` is carried through from discovery unchanged, including
+    "unknown". It is not upgraded by registration.
+    """
+
+    id: str
+    name: str
+    environment: str
+    path: Optional[str]
+    version: Optional[str]
+    confidence: str
+    created_at: str
+
+    grants_execution: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "environment": self.environment,
+            "path": self.path,
+            "version": self.version,
+            "confidence": self.confidence,
+            "created_at": self.created_at,
+            "grants_execution": self.grants_execution,
+        }
+
+
 @dataclass
 class WorkerOutcome:
     """What an executor reports back. Claimed, not trusted: the service

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Optional
 
 from .adapters.fake import FakeExecutor  # noqa: F401  (re-export for tests)
+from . import discovery
 from .logging_setup import get_logger, log_event
 from .paths import (
     REASON_NOT_ABSOLUTE,
@@ -51,6 +52,8 @@ from .models import (
     Principal,
     Project,
     ProjectRejected,
+    Tool,
+    ToolRejected,
     WorkerLostError,
     WorkerOutcome,
     encode_command,
@@ -175,6 +178,57 @@ class ControlService:
         if removed:
             self.store.record_event("project_removed", {"project_id": project_id})
             log_event(_log, logging.INFO, "project.removed", project_id=project_id)
+        return removed
+
+    # -- tools (Phase 3) -------------------------------------------------
+
+    def register_tool(
+        self,
+        name: str,
+        environment: str,
+        path: Optional[str] = None,
+        version: Optional[str] = None,
+        confidence: str = "unknown",
+    ) -> Tool:
+        """Record a tool the owner has reviewed.
+
+        This records a fact and grants nothing. `grants_execution` is False on
+        every row and nothing in the executor reads this table, so a tool the
+        owner approves here is still not something any job may run.
+
+        The environment is validated against the same list discovery uses.
+        Accepting an arbitrary one would let a caller file a row claiming
+        coverage of a platform this service has no test evidence for - and a
+        registry that can hold such a claim is worse than one that cannot.
+        """
+        if environment not in discovery.SUPPORTED_ENVIRONMENTS:
+            log_event(_log, logging.WARNING, "tool.rejected",
+                      reason="environment_unsupported",
+                      environment=str(environment)[:40],
+                      tool_name=str(name)[:60])
+            raise ToolRejected(
+                "environment_unsupported",
+                f"environment {environment!r} has no test evidence in this "
+                f"service; supported: {', '.join(discovery.SUPPORTED_ENVIRONMENTS)}",
+            )
+        tool = self.store.create_tool(
+            name=name, environment=environment, path=path,
+            version=version, confidence=confidence,
+        )
+        log_event(_log, logging.INFO, "tool.registered",
+                  tool_name=tool.name, environment=tool.environment,
+                  confidence=tool.confidence, grants_execution=False)
+        return tool
+
+    def list_tools(self) -> list[Tool]:
+        return self.store.list_tools()
+
+    def remove_tool(self, tool_id: str) -> bool:
+        """Remove a registry row. Removing grants nothing either - it only
+        forgets a record, and the tool on disk is untouched."""
+        removed = self.store.delete_tool(tool_id)
+        log_event(_log, logging.INFO, "tool.removed" if removed else
+                  "tool.remove_missed", tool_id=str(tool_id)[:60])
         return removed
 
     def register_project(

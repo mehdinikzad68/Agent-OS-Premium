@@ -430,10 +430,16 @@ class PreFixApprovalRowsTest(unittest.TestCase):
         public = _approval_to_dict(self.store.get_approval("appr-old"))
         self.assertIsNone(public["scope"]["command"])
 
-    def test_no_schema_migration_was_needed(self):
-        # The column is already a JSON blob, which is why this fix is one
-        # commit. If a future change adds a real column, this test is the
-        # reminder that the old path was taken on purpose.
+    def test_the_scope_stayed_in_the_existing_json_blob(self):
+        # The column is already a JSON blob, which is why the F1 fix was one
+        # commit with no migration. If a future change adds a real column, this
+        # test is the reminder that the old path was taken on purpose.
+        #
+        # Renamed from test_no_schema_migration_was_needed when Phase 3 bumped
+        # SCHEMA_VERSION for an unrelated reason (the tools table). The claim
+        # itself is about the approvals TABLE, not the global version, so the
+        # assertion moved to the constant and the name now says what is
+        # actually being defended.
         cols = {
             r[1]: r[2]
             for r in self.store.conn.execute("PRAGMA table_info(approvals)").fetchall()
@@ -442,7 +448,13 @@ class PreFixApprovalRowsTest(unittest.TestCase):
         ver = self.store.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()[0]
-        self.assertEqual(ver, "2", "F1 must not bump SCHEMA_VERSION")
+        from agent_os.store import SCHEMA_VERSION
+        self.assertEqual(
+            int(ver), SCHEMA_VERSION,
+            "F1 must not change SCHEMA_VERSION; only a schema change may. "
+            "The version is now expected to move only for a real schema "
+            "change - Phase 3 (the tools table) was the last one.",
+        )
 
 
 class ManifestHashIsStillALiveGuardTest(_Base):

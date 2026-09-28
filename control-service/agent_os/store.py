@@ -28,11 +28,12 @@ from .models import (
     MissionState,
     Principal,
     Project,
+    Tool,
     iso,
     utc_now,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -84,6 +85,16 @@ CREATE TABLE IF NOT EXISTS knowledge_docs (
   content TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tools (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  environment TEXT NOT NULL,
+  path TEXT,
+  version TEXT,
+  confidence TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (environment, name, path)
+);
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -103,6 +114,21 @@ _MIGRATIONS: dict[int, list[str]] = {
     # v1 -> v2: add the optional `command` column to jobs (subprocess executor).
     1: [
         "ALTER TABLE jobs ADD COLUMN command TEXT",
+    ],
+    # v2 -> v3: the tool registry (Phase 3). A new table needs no ALTER, but the
+    # step is still declared so an existing v2 database is recorded as migrated
+    # rather than silently relying on CREATE TABLE IF NOT EXISTS.
+    2: [
+        """CREATE TABLE IF NOT EXISTS tools (
+             id TEXT PRIMARY KEY,
+             name TEXT NOT NULL,
+             environment TEXT NOT NULL,
+             path TEXT,
+             version TEXT,
+             confidence TEXT NOT NULL,
+             created_at TEXT NOT NULL,
+             UNIQUE (environment, name, path)
+           )""",
     ],
 }
 
@@ -178,6 +204,83 @@ class Store:
                 for stmt in _MIGRATIONS[v]:
                     self.conn.execute(stmt)
             v += 1
+
+    # -- tools -----------------------------------------------------------
+
+    def create_tool(
+        self,
+        name: str,
+        environment: str,
+        path: Optional[str],
+        version: Optional[str],
+        confidence: str,
+        now: Optional[datetime] = None,
+    ) -> Tool:
+        """Record a reviewed tool. Re-registering the same triple is a no-op.
+
+        `confidence` is stored exactly as discovery reported it, including
+        "unknown". It is not upgraded here: the owner approving a record does
+        not make an unreadable version readable.
+        """
+        with self._lock:
+            with self.conn:
+                existing = self.conn.execute(
+                    "SELECT * FROM tools WHERE environment=? AND name=? "
+                    "AND path IS ?",
+                    (environment, name, path),
+                ).fetchone()
+                if existing is not None:
+                    return self._row_to_tool(existing)
+                tool = Tool(
+                    id=_new_id("tool"),
+                    name=name,
+                    environment=environment,
+                    path=path,
+                    version=version,
+                    confidence=confidence,
+                    created_at=iso(now or utc_now()),
+                )
+                self.conn.execute(
+                    "INSERT INTO tools (id, name, environment, path, version, "
+                    "confidence, created_at) VALUES (?,?,?,?,?,?,?)",
+                    (tool.id, tool.name, tool.environment, tool.path,
+                     tool.version, tool.confidence, tool.created_at),
+                )
+            return tool
+
+    def get_tool(self, tool_id: str) -> Optional[Tool]:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT * FROM tools WHERE id=?", (tool_id,)
+            ).fetchone()
+            return self._row_to_tool(row) if row else None
+
+    def list_tools(self) -> list[Tool]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM tools ORDER BY name, environment, id"
+            ).fetchall()
+            return [self._row_to_tool(row) for row in rows]
+
+    def delete_tool(self, tool_id: str) -> bool:
+        with self._lock:
+            with self.conn:
+                cur = self.conn.execute(
+                    "DELETE FROM tools WHERE id=?", (tool_id,)
+                )
+                return cur.rowcount > 0
+
+    @staticmethod
+    def _row_to_tool(row) -> Tool:
+        return Tool(
+            id=row["id"],
+            name=row["name"],
+            environment=row["environment"],
+            path=row["path"],
+            version=row["version"],
+            confidence=row["confidence"],
+            created_at=row["created_at"],
+        )
 
     # -- missions -------------------------------------------------------
 

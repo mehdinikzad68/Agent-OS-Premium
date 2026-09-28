@@ -327,7 +327,33 @@ Measured on the running product before acceptance, not read off the code:
 | a registered project survives a restart | 1 project before and after |
 | registration causes no mount and no command execution | no `subprocess` / `Popen` / `docker` / `mount` / `os.system` on that path |
 
-With Phase 2 accepted, Phase 3 (Tool discovery and explicit registration) is
+### Phase 3 — Tool discovery and registry — code complete, AWAITING OWNER ACCEPTANCE
+
+The three exit criteria, measured on the running product:
+
+| Exit criterion | Result |
+|---|---|
+| discovery installs nothing and writes no file | a watched directory is empty after a real HTTP discovery run |
+| an unknown path or non-standard output yields `unknown` | "loaded 3 plugins" cannot become version 3; the recogniser matches from the start of the line |
+| registering **and removing** a tool, reviewable from the UI | both buttons present, both wired, 28 UI tests, 13/13 mutations killed |
+
+The constraint the roadmap states — a discovered tool is not thereby allowed to
+run — is enforced in three independent places, because one assertion is easy to
+satisfy by accident:
+
+1. `grants_execution` is `False` on every registry row;
+2. the executor list is byte-identical before and after discovery and
+   registration;
+3. the executor source contains no reference to the tool table at all.
+
+Point 3 is what makes the phase safe to ship ahead of Phase 6. A behavioural
+test only proves the calls it makes; reading the source proves there is nothing
+for a later change to reach.
+
+**What is NOT claimed:** nothing in the registry can be executed. A registered
+tool is a record the owner made, not a capability.
+
+With Phase 2 accepted, Phase 3 (Tool discovery and explicit registration) was
 unblocked. Its own exit criteria, from the roadmap:
 
 1. discovery that installs nothing and writes no file

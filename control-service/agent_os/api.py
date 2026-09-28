@@ -36,10 +36,12 @@ from .models import (
     Principal,
     Project,
     ProjectRejected,
+    ToolRejected,
     decode_command,
     utc_now,
 )
 from .logging_setup import get_logger, log_event
+from . import discovery
 from .service import ControlService
 
 _log = get_logger("api")
@@ -239,6 +241,10 @@ class AgentOSApi:
             return 200, {"events": self.service.store.list_events()}
         if path == "/api/executors":
             return 200, {"executors": sorted(_EXECUTORS.keys())}
+        if path == "/api/tools/discover":
+            return 200, self._discover(body=None)
+        if path == "/api/tools/registry":
+            return 200, {"tools": self._tool_publics()}
         raise ApiError(404, "not_found", f"unknown route: {path}")
 
     # -- POST ---------------------------------------------------------------
@@ -266,6 +272,10 @@ class AgentOSApi:
             return 200, self._dispatch(path.split("/")[3])
         if path.startswith("/api/jobs/") and path.endswith("/reconcile"):
             return 200, self._job_public(self._reconcile(path.split("/")[3], body))
+        if path == "/api/tools/discover":
+            return 200, self._discover(body)
+        if path == "/api/tools/registry":
+            return 201, self._tool_public(self._register_tool(body))
         raise ApiError(404, "not_found", f"unknown route: {path}")
 
     # -- DELETE ---------------------------------------------------------------
@@ -274,9 +284,80 @@ class AgentOSApi:
         p = path.strip("/").split("/")
         if path.startswith("/api/projects/"):
             return 200, self._remove_project(p[2])
+        if path.startswith("/api/tools/registry/"):
+            return 200, {"removed": self.service.remove_tool(p[3])}
         raise ApiError(404, "not_found", f"unknown route: {path}")
 
     # -- action implementations -------------------------------------------
+
+    def _discover(self, body: dict | None) -> dict:
+        """Probe candidate tools. Read-only: installs nothing, writes nothing.
+
+        A GET with no body searches the allowlisted names on PATH. A POST may
+        name candidates explicitly, so the UI and the tests can ask about a
+        specific binary without scanning the whole environment.
+        """
+        environment = "wsl"
+        names: list[str] = []
+        if body:
+            environment = self._require_str(body, "environment")
+            raw = body.get("names")
+            if isinstance(raw, list):
+                names = [str(n) for n in raw if isinstance(n, (str, int))]
+        try:
+            if names:
+                result = discovery.discover(names, environment)
+            else:
+                result = discovery.discover(discovery.search_path(environment),
+                                            environment)
+        except discovery.EnvironmentUnsupported as e:
+            # A refusal, not an empty list: an empty result would read as
+            # "nothing is installed", which is a different and false claim.
+            raise ApiError(400, "environment_unsupported", str(e)) from e
+        payload = result.to_dict()
+        payload["execution_granted"] = False
+        payload["note"] = ("discovery is read-only; a discovered tool is not "
+                           "permitted to run until it is registered, and "
+                           "registration alone still grants no execution rights")
+        return payload
+
+    def _register_tool(self, body: dict) -> dict:
+        """Register a tool the owner has reviewed.
+
+        Registration is a record, not a capability. The row carries
+        `grants_execution=False` permanently, and nothing in the executor
+        consults this table - stated here so a future change cannot quietly
+        turn discovery into permission.
+        """
+        name = self._require_str(body, "name")
+        environment = self._require_str(body, "environment")
+        version = body.get("version")
+        try:
+            tool = self.service.register_tool(
+                name=name,
+                environment=environment,
+                path=str(body["path"]) if body.get("path") is not None else None,
+                version=str(version) if version is not None else None,
+                confidence=str(body.get("confidence") or "unknown"),
+            )
+        except ToolRejected as e:
+            raise ApiError(400, e.reason, str(e)) from e
+        return self._tool_public(tool)
+
+    def _tool_public(self, tool) -> dict:
+        """Serialise a tool.
+
+        The response is whatever the model says, with no override here. An
+        earlier version forced `grants_execution` to False in this layer,
+        which made Tool.grants_execution dead code and created two sources of
+        truth: changing the model had no effect on the response, so a proof
+        that flipped the model's default could not detect it. One source, and
+        the field the owner sees is the field the model holds.
+        """
+        return tool.to_dict() if hasattr(tool, "to_dict") else dict(tool)
+
+    def _tool_publics(self) -> list:
+        return [self._tool_public(t) for t in self.service.list_tools()]
 
     def _require_command(self, value: object) -> list[str] | None:
         """Validate `command` at the edge, where a refusal is still cheap.

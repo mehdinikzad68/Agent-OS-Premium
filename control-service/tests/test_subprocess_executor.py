@@ -129,8 +129,13 @@ class MigrationTest(unittest.TestCase):
     def setUp(self):
         TMP.mkdir(exist_ok=True)
 
-    def test_v1_database_migrates_to_v2(self):
-        """A DB created under v1 schema gains the `command` column on open."""
+    def test_v1_database_migrates_to_current(self):
+        """A DB created under the v1 schema reaches the current version on open.
+
+        Renamed from ..._to_v2 when Phase 3 added a step. The assertion is now
+        on SCHEMA_VERSION itself rather than a literal, so a later migration
+        does not silently turn this into a test that proves nothing.
+        """
         import sqlite3
 
         db = TMP / "migration.db"
@@ -151,7 +156,15 @@ class MigrationTest(unittest.TestCase):
             ver = svc.store.conn.execute(
                 "SELECT value FROM meta WHERE key='schema_version'"
             ).fetchone()["value"]
-            self.assertEqual(ver, "2")
+            from agent_os.store import SCHEMA_VERSION
+            self.assertEqual(int(ver), SCHEMA_VERSION,
+                             f"a v1 database did not reach the current schema "
+                             f"({ver} != {SCHEMA_VERSION})")
+            # the tools table from Phase 3 must exist on the migrated path too
+            tables = {r[0] for r in svc.store.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            self.assertIn("tools", tables,
+                          "the v1 -> current migration did not create the tools table")
         finally:
             svc.close()
 

@@ -510,7 +510,9 @@ class UiI18nTest(unittest.TestCase):
                 if _re.fullmatch(r"[\w.\[\]]*(attempt_no|seq)\b[\w.\[\]]*", expr):
                     continue
                 if expr in ("actions.join(\"\")", "evidenceHtml", "ts", "e.kind",
-                            "cmdSafe",
+                            "cmdSafe", "verSafe", "pathSafe", "noteSafe",
+                            "_toolConfidenceBadgeHtml(tool)",
+                            "_toolProvenanceNoteHtml(tool)",
                             "badges ? `<div class=\"m\">${badges}</div>` : \"\""):
                     # cmdSafe is escaped-at-construction markup: it is built as
                     # `escapeHtml(cmdHtml)` and cmdHtml only ever contains
@@ -519,6 +521,15 @@ class UiI18nTest(unittest.TestCase):
                     # the same standing as evidenceHtml above. If a future
                     # change makes cmdSafe carry anything else, this allowlist
                     # entry becomes the thing to question.
+                    #
+                    # verSafe / pathSafe / noteSafe are the Phase 3 tool fields,
+                    # escaped at construction exactly as cmdSafe is: each is
+                    # `escapeHtml(tool.X || "")`. The two *_Html helpers return
+                    # markup built from literals and t() only - a confidence
+                    # word and a static "windows_mount" span - so they carry no
+                    # tool-supplied text. All five are named here rather than
+                    # silently allowed, so a future change to any of them is
+                    # visible in this diff.
                     continue
                 if expr == "a.id":
                     # server-generated approval id, and escapeHtml would NOT
