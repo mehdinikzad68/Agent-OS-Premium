@@ -164,6 +164,83 @@ class ControlService:
         self.store.close()
 
     # ------------------------------------------------------------------
+    # external event ingestion (Phase 4, observation only)
+    # ------------------------------------------------------------------
+
+    def ingest_external(
+        self, source_path: str, cursor: int = 0, limit: int = 500
+    ) -> dict:
+        """Read real activity from an external source into the event log.
+
+        Observation only: this reads what another runtime already recorded and
+        labels each row with where it came from. It creates nothing, executes
+        nothing, and blocks nothing. Because the source records tool RESULTS,
+        an ingested event can say what happened and must never be worded as
+        something that was prevented or intercepted - that is Phase 5.
+
+        The dedup_key is the source's own row id, so a re-read of the same
+        range is a no-op rather than a second copy. That is what makes a
+        reconnect safe: the cursor may go backwards and the log will not grow.
+
+        Returns a summary that distinguishes three outcomes the UI must not
+        conflate: events were added, the source is readable with nothing new,
+        or the source could not be read at all.
+        """
+        from .adapters.hermes_ingest import SourceUnavailable, StateReader
+
+        reader = StateReader(source_path)
+        try:
+            probe = reader.probe()
+            events, new_cursor = reader.read_since(cursor, limit)
+        except SourceUnavailable as e:
+            # Not an empty timeline. The UI must be able to say "cannot see".
+            return {
+                "status": "unavailable",
+                "reason": str(e),
+                "added": 0,
+                "cursor": cursor,
+                "skipped": 0,
+            }
+
+        added = 0
+        skipped = 0
+        for ev in events:
+            payload = {
+                "source": ev.source,
+                "tool_name": ev.tool_name,
+                "tool_call_id": ev.tool_call_id,
+                "source_row_id": ev.row_id,
+                "source_timestamp": ev.timestamp,
+                "session_id": ev.session_id,
+                "model": ev.model,
+                "repo_root": ev.repo_root,
+                "notes": list(ev.notes),
+                "observed_only": True,
+            }
+            # dedup on the source's own id: a replay is a no-op
+            if self.store.record_event(
+                "external.tool_call", payload,
+                dedup_key=f"hermes:{ev.row_id}",
+            ):
+                added += 1
+            else:
+                skipped += 1
+
+        return {
+            "status": "ok",
+            "reason": None,
+            "added": added,
+            "cursor": new_cursor,
+            "skipped": skipped,
+            "source": {"path": source_path, **probe},
+        }
+
+    def list_external_events(self) -> list[dict]:
+        """Ingested events only, newest first, for the timeline panel."""
+        return [e for e in self.store.list_events()
+                if e["kind"] == "external.tool_call"]
+
+    # ------------------------------------------------------------------
     # missions
     # ------------------------------------------------------------------
 

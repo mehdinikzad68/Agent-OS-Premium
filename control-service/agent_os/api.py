@@ -261,6 +261,8 @@ class AgentOSApi:
             return 200, self._discover(body=None)
         if path == "/api/tools/registry":
             return 200, {"tools": self._tool_publics()}
+        if path == "/api/events/external":
+            return 200, {"events": self.service.list_external_events()}
         raise ApiError(404, "not_found", f"unknown route: {path}")
 
     # -- POST ---------------------------------------------------------------
@@ -296,6 +298,12 @@ class AgentOSApi:
             return 200, self._discover(body)
         if path == "/api/tools/registry":
             return 201, self._tool_public(self._register_tool(body))
+        if path == "/api/events/ingest":
+            return 200, self.service.ingest_external(
+                self._require_str(body, "source"),
+                cursor=int(body.get("cursor") or 0),
+                limit=int(body.get("limit") or 500),
+            )
         raise ApiError(404, "not_found", f"unknown route: {path}")
 
     # -- DELETE ---------------------------------------------------------------

@@ -370,6 +370,39 @@ unblocked. Its own exit criteria, from the roadmap:
 and the constraint stated by the roadmap itself: a discovered tool is not
 thereby allowed to run.
 
+### Phase 4 — Event Ingestion and Operational Timeline — code complete, PROVEN on real profile, AWAITING OWNER ACCEPTANCE
+
+The exit criteria from the roadmap, measured against the owner's real, live Hermes profile (`state.db` on Windows drive via `/mnt/c`):
+
+| Exit criterion | Result | Evidence |
+|---|---|---|
+| Traceable, correlated events from a real runtime | ✅ PROVEN | Real Hermes `state.db` ingested over HTTP (`POST /api/events/ingest`), carrying source (`desktop`), session IDs, tool names, call IDs, timestamps |
+| Cursor advances reliably and replay is safe (dedup) | ✅ PROVEN | Replay adds 0 rows (`added=0`, log length unchanged); Cursor based on `messages.id` monotonically |
+| Explicit disconnected / unreadable status | ✅ PROVEN | Missing/unreadable source reports `status="unavailable"`, never an empty quiet period or false ok |
+| Honesty & safe redaction | ✅ PROVEN | Real NULL tool names/repo roots arrive as `unknown` with reasons attached (`field is null`); 0 message content or sensitive keys leaked into payload |
+| Restart durability | ✅ PROVEN | Ingested events survive service restart byte-for-byte |
+| Ingestion grants no execution rights | ✅ PROVEN | Executors list, tool registry, missions, and approvals completely unchanged |
+| No false claims of control/interception | ✅ PROVEN | All events marked `observed_only: true`; no claims of "blocked/allowed/prevented" (Phase 5) |
+| Anti-proof (each guarantee proven killable) | ✅ PROVEN | Mutants A, B, C, D all turn RED independently on fresh servers/databases |
+
+#### Anti-proof findings & lessons learned in Phase 4
+
+1. **Port collision on test harness caused false results:**
+   In early test iterations, a stale `agent_os.cli serve` process was listening on the hardcoded port `8872`, causing new test boots to fail silently and query the zombie server on an old database (yielding `first_added=0`).
+   *Fix:* Converted `boot()` to allocate dynamic ephemeral loopback ports (`get_free_port()`), ensured proper process group shutdown (`kill_process`), and killed lingering background processes.
+
+2. **Discriminative mutant verification vs. monolithic formula:**
+   Mutants A, B, C, D originally shared a composite `healthy_shape` check. If one check malfunctioned, all mutants appeared RED for the wrong reason.
+   *Fix:* Built dedicated evaluation functions for each mutant:
+   - **Mutant A (ordered by timestamp instead of id):** Verifies that row IDs are strictly increasing. Caught when timestamps invert order.
+   - **Mutant B (no dedup key):** Verifies replay deduplication. Caught when replay doubles event count.
+   - **Mutant C (unreadable source reported as ok):** Verifies unreadable source reporting. Caught when missing DB returns `status='ok'`.
+   - **Mutant D (guessing null fields):** Verifies that missing fields (e.g. `git_repo_root IS NULL` in real sessions) are labeled `unknown` with `"field is null"` notes and never replaced with guessed values like `"inferred-name"`. Caught when `inferred-name` appears in payload.
+
+3. **SQLite locking on `/mnt/c`:**
+   Opening Windows SQLite databases from WSL2 raised `disk I/O error` on plain read-only connections because locking is unsupported over Plan9/WSL filesystem mounts.
+   *Fix:* `StateReader` uses `file:...mode=ro&immutable=1` with explicit documentation of stale-read semantics (acceptable for primary-key cursor traversal, but strictly isolated from the service's own operational store).
+
 ## Method notes worth keeping
 
 - The `agy` reviewers were wrong or unhelpful about 40% of the time. One

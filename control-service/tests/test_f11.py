@@ -232,7 +232,7 @@ class NoWriteOnRefusalTest(unittest.TestCase):
         from agent_os.store import Store
         tmp = pathlib.Path(tempfile.mkdtemp(prefix="f11nwsvc-"))
         try:
-            svc = ControlService(Store(tmp / "s.db"))
+            svc = ControlService(tmp / "s.db")
             with self.assertRaises(KeyError):
                 svc.activate_mission("mission_absent")
             self.assertEqual(

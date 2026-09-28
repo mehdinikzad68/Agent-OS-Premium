@@ -137,6 +137,21 @@
     </div>
 
     <div class="card" style="margin-top:12px">
+      <h2 data-i18n="ui.observedTimeline"></h2>
+      <!-- The distinction this panel exists to make visible: these events
+           were recorded by another runtime and observed here. Ingest sees
+           what already happened; it cannot have stopped anything. Stated on
+           the page, not only in a log. -->
+      <div class="muted" data-i18n="ui.observedSafety"></div>
+      <div class="row-inline" style="margin-top:8px">
+        <button class="ok" id="obs-ingest" type="button" data-i18n="ui.observedIngest"></button>
+        <span class="muted" id="obs-msg"></span>
+      </div>
+      <div class="muted" id="obs-state" style="margin-top:8px"></div>
+      <div id="obs-list" class="list"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
       <h2 data-i18n="diag.title"></h2>
       <div class="muted" data-i18n="diag.hint"></div>
       <pre id="diag" class="feed" style="margin-top:8px">—</pre>
@@ -206,6 +221,19 @@ const I18N = {
     "ui.toolsRegisterFail": "Registration refused",
     "ui.toolsRemoveFail": "Removal failed",
     "ui.toolsDiscoverFail": "Discovery failed",
+    "ui.observedTimeline": "Observed activity (external source)",
+    "ui.observedSafety": "These events were recorded by another runtime and read from here. Seeing an event means it already happened; ingesting it never stopped, blocked or allowed anything. Blocking actions is a separate, later capability.",
+    "ui.observedIngest": "Read activity",
+    "ui.obsUnavailable": "The source cannot be read right now. No events are being shown, and this is not the same as an empty timeline.",
+    "ui.obsNone": "The source is readable.",
+    "ui.obsOk": "The source is readable.",
+    "ui.obsEmpty": "No observed events yet. Use \"Read activity\" to load what the source has recorded.",
+    "ui.obsNothingNew": "The source is readable and has nothing new since the last read.",
+    "ui.obsAdded": "Read {n} new event(s).",
+    "ui.obsNeedToken": "No token entered - nothing was read. Enter the token in the Connection panel, then read again.",
+    "ui.obsFailed": "Could not read the source",
+    "ui.obsNoNotes": "no anomalies recorded",
+    "ui.obsUnattributed": "not attributable",
     "ui.toolsNeedToken": "No token entered - nothing was sent to the server. Enter the token in the Connection panel, then discover again.",
     "ui.toolsVersionUnknown": "version unknown",
     "ui.toolsSkipped": "Not probed",
@@ -308,6 +336,19 @@ const I18N = {
     "ui.toolsRegisterFail": "ثبت رد شد",
     "ui.toolsRemoveFail": "حذف انجام نشد",
     "ui.toolsDiscoverFail": "کشف انجام نشد",
+    "ui.observedTimeline": "فعالیت مشاهده‌شده (منبع بیرونی)",
+    "ui.observedSafety": "این رویدادها را اجرای دیگری ثبت کرده و از اینجا خوانده می‌شوند. دیدن یک رویداد یعنی کار از پیش انجام شده؛ خواندن آن هیچ‌چیز را متوقف، مسدود یا مجاز نکرده است. متوقف‌کردن عملیات، قابلیتی جدا و در آینده است.",
+    "ui.observedIngest": "خواندن فعالیت",
+    "ui.obsUnavailable": "منبع در حال حاضر خوانده نمی‌شود. هیچ رویدادی نمایش داده نشده و این با تایم‌لاین خالی یکی نیست.",
+    "ui.obsNone": "منبع قابل خواندن است.",
+    "ui.obsOk": "منبع قابل خواندن است.",
+    "ui.obsEmpty": "هنوز رویدادی مشاهده نشده. برای خواندن آنچه منبع ثبت کرده، «خواندن فعالیت» را بزنید.",
+    "ui.obsNothingNew": "منبع قابل خواندن است و از خواندن قبلی چیز تازه‌ای ندارد.",
+    "ui.obsAdded": "{n} رویداد تازه خوانده شد.",
+    "ui.obsNeedToken": "توکنی وارد نشده - چیزی خوانده نشد. توکن را در پنل اتصال وارد کنید و دوباره بخوانید.",
+    "ui.obsFailed": "خواندن منبع ممکن نشد",
+    "ui.obsNoNotes": "نقصی ثبت نشده",
+    "ui.obsUnattributed": "نامشخص",
     "ui.toolsNeedToken": "توکنی وارد نشده - هیچ درخواستی به سرور فرستاده نشد. توکن را در پنل اتصال وارد کنید و دوباره کشف را بزنید.",
     "ui.toolsVersionUnknown": "نسخه نامشخص",
     "ui.toolsSkipped": "کاوش نشد",
@@ -440,6 +481,13 @@ function applyI18n(root) {
 // bad value falls back instead of breaking boot.
 const LANG_STORE_KEY = "agent_os_lang";
 const TOKEN_STORE_KEY = "agent_os_token";
+// The observed-events source and the resume point. The source is a path on
+// the Windows host, because that is where the Hermes profile lives; the
+// service reads it read-only. Shown in the UI so the operator can see
+// what is being observed rather than trusting an invisible default.
+const OBS_SOURCE = "C:/Users/Mehdi/AppData/Local/hermes/profiles/"
+  + "my-personal-assistant/state.db";
+let OBS_CURSOR = 0;
 function readStore(key) {
   try { return localStorage.getItem(key); } catch (e) { return null; }
 }
@@ -1037,6 +1085,128 @@ async function decide(approvalId, decision) {
     refresh();
   } catch (e) { toast(t("err.prefix") + e.message); }
 }
+
+// -- observed external events (Phase 4) -----------------------------------
+// Everything interpolated below is escaped at construction and the variables
+// are named *Safe, because a variable that merely LOOKS escaped once satisfied
+// the security scanner and then leaked on the next edit.
+
+const OBS_UNKNOWN = "unknown";
+
+// A source field is technical text: it stays LTR and monospace inside the RTL
+// page, or a path with slashes renders backwards and becomes unreadable.
+function obsTextSafe(v) {
+  if (v === null || v === undefined) return OBS_UNKNOWN;
+  const s = String(v).trim();
+  return s ? s : OBS_UNKNOWN;
+}
+
+function obsTimeSafe(ts, locale) {
+  if (!ts || ts <= 0) return OBS_UNKNOWN;
+  try {
+    return new Date(ts * 1000).toLocaleTimeString(locale);
+  } catch (e) {
+    return OBS_UNKNOWN;
+  }
+}
+
+function obsRenderState(state, locale) {
+  const el = $("obs-state");
+  if (!el) return;
+  // Three outcomes, never collapsed into one. "Cannot see" and "nothing new"
+  // look identical if the panel only ever says "empty", and that difference is
+  // the whole point of an honest timeline.
+  if (state === "unavailable") {
+    el.textContent = t("ui.obsUnavailable");
+    el.style.color = "var(--bad)";
+  } else if (state === "none") {
+    el.textContent = t("ui.obsNone");
+    el.style.color = "var(--muted)";
+  } else if (state === "ok") {
+    el.textContent = t("ui.obsOk");
+    el.style.color = "var(--muted)";
+  } else {
+    el.textContent = "";
+    el.style.color = "var(--muted)";
+  }
+}
+
+async function obsIngest() {
+  const btn = $("obs-ingest");
+  const msg = $("obs-msg");
+  btn.disabled = true;
+  msg.textContent = "";
+  if (!TOKEN) {
+    msg.textContent = t("ui.obsNeedToken");
+    btn.disabled = false;
+    return;
+  }
+  try {
+    const d = await api("POST", "/api/events/ingest",
+      { source: OBS_SOURCE, cursor: OBS_CURSOR, limit: 200 });
+    OBS_CURSOR = d.cursor || OBS_CURSOR;
+    obsRenderState(d.status, localeFor());
+    const added = d.added || 0;
+    if (d.status === "unavailable") {
+      msg.textContent = t("ui.obsUnavailable");
+    } else if (added === 0) {
+      msg.textContent = t("ui.obsNothingNew");
+    } else {
+      msg.textContent = t("ui.obsAdded").replace("{n}", String(added));
+    }
+    await obsRender();
+  } catch (e) {
+    msg.textContent = reasonText(e.reason, t("ui.obsFailed"));
+    obsRenderState("unavailable", localeFor());
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function obsRender() {
+  const d = await api("GET", "/api/events/external");
+  const list = $("obs-list");
+  list.innerHTML = "";
+  const events = (d.events || []).slice().reverse();
+  if (events.length === 0) {
+    list.textContent = t("ui.obsEmpty");
+    return;
+  }
+  const locale = localeFor();
+  events.forEach((e) => {
+    const p = e.payload || {};
+    const div = document.createElement("div");
+    div.className = "row";
+    // Every value below is escaped at construction, and every variable that
+    // reaches innerHTML is named *Safe. The scanner in tests/test_ui_i18n.py
+    // enforces that naming, which is the point: a variable that only looks
+    // escaped is how the last leak happened.
+    const timeSafe = escapeHtml(obsTimeSafe(p.source_timestamp, locale));
+    const toolSafe = escapeHtml(obsTextSafe(p.tool_name));
+    const srcSafe = escapeHtml(obsTextSafe(p.source));
+    const sessSafe = escapeHtml(obsTextSafe(p.session_id));
+    const notes = Array.isArray(p.notes) ? p.notes : [];
+    const noteSafe = escapeHtml(notes.join(" · ") || t("ui.obsNoNotes"));
+    const toolNameSafe = obsTextSafe(p.tool_name);
+    // An event that could not be attributed is marked, never smoothed over.
+    // The badge is markup of our own plus one escaped catalog string, so the
+    // whole fragment is built and escaped before it is interpolated.
+    const badgeLabelSafe = escapeHtml(t("ui.obsUnattributed"));
+    const badgeMarkupSafe = toolNameSafe === OBS_UNKNOWN
+      ? `<span class="badge b-failed">${badgeLabelSafe}</span> `
+      : "";
+    const rowMarkupSafe =
+      `<span class="ts">${timeSafe}</span> ${badgeMarkupSafe}` +
+      `<span class="kind" dir="ltr">${toolSafe}</span> ` +
+      `<span class="muted" dir="ltr">${srcSafe}</span> ` +
+      `<span class="muted" dir="ltr">${sessSafe}</span> ` +
+      `<span class="muted">${noteSafe}</span>`;
+    div.innerHTML = rowMarkupSafe;
+    list.appendChild(div);
+  });
+}
+
+$("obs-ingest").addEventListener("click", obsIngest);
 
 async function loadFeed() {
   const d = await api("GET", "/api/events");
