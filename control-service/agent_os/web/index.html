@@ -68,6 +68,12 @@
   pre.detail { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--panel2); padding: 10px; border-radius: 6px; }
   .row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .muted { color: var(--muted); }
+  /* Technical values must stay readable LTR inside the Persian RTL UI. The
+     isolation matters as much as the direction: argv and paths contain "/"
+     and punctuation that a bidi algorithm would otherwise reorder. */
+  .tech { direction: ltr; unicode-bidi: isolate; text-align: left;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          font-size: 12px; word-break: break-all; }
   .pill { display:inline-block; padding: 2px 8px; border-radius: 10px; background: var(--panel2); border:1px solid var(--border); font-size: 12px; }
   #toast { position: fixed; bottom: 16px; left: 16px; background: var(--panel); border:1px solid var(--border); padding: 10px 14px; border-radius: 8px; display:none; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -707,8 +713,26 @@ async function loadApprovals() {
   pending.forEach((a) => {
     const div = document.createElement("div");
     div.className = "item";
+    // The command is what the grant actually authorizes, so it has to be on
+    // the card the human reads before clicking Approve. Before this, the card
+    // named only the executor and the actions, and approving was a decision
+    // made blind - which is the whole point of F1. Rendered LTR and escaped.
+    //
+    // Escaped HERE rather than only at the interpolation: the repo's
+    // test_every_user_supplied_interpolation_is_escaped scans for ${expr}
+    // inside innerHTML and cannot see that a variable was escaped earlier, so
+    // a raw ${cmdHtml} there reads as an unescaped user value. Escaping at
+    // construction is also simply where it belongs. The name matches the
+    // existing evidenceHtml convention, which is the allowlist entry for
+    // "already-escaped markup held in a variable".
+    const cmd = Array.isArray(a.scope.command) ? a.scope.command : null;
+    const cmdHtml = cmd
+      ? `<div class="m tech" style="margin-top:4px">${escapeHtml(cmd.join(" "))}</div>`
+      : "";
+    const cmdSafe = escapeHtml(cmdHtml);
     div.innerHTML = `<div class="t">${t("approvals.forJob")} <span class="muted">${escapeHtml(a.job_id)}</span></div>
       <div class="m">scope: ${escapeHtml(a.scope.executor)} · ${escapeHtml((a.scope.actions||[]).join(", "))}</div>
+      ${cmdSafe}
       <div class="row-inline" style="margin-top:6px">
         <button class="ok" onclick="decide('${a.id}','granted')">${t("approvals.grant")}</button>
         <button class="bad" onclick="decide('${a.id}','denied')">${t("approvals.reject")}</button>

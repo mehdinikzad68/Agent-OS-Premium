@@ -354,6 +354,23 @@ class ControlService:
                 workspace_paths=job.workspace_paths,
                 actions=job.actions,
             )
+        # The command is the OPERATION, so it is never taken from a scope
+        # argument - not even an internally-constructed one. It is copied from
+        # the job, always, and any command the caller put in the scope is
+        # discarded. Doing this here rather than only in the API layer means a
+        # direct service caller cannot strip it either.
+        #
+        # Why this matters even though stripping is fail-closed (a scope with
+        # no command authorizes no command, so dispatch is refused): the human
+        # would be shown a scope with no command while the job has one, and
+        # "the approval does not name the operation" is exactly the blindness
+        # F1 is about. A grant must always describe what it authorizes.
+        scope = ApprovalScope(
+            executor=scope.executor,
+            workspace_paths=scope.workspace_paths,
+            actions=scope.actions,
+            command=job.command,
+        )
         approval = Approval(
             id=_new_id("appr"),
             job_id=job_id,

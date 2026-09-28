@@ -98,6 +98,15 @@ def _mission_to_dict(mission: Mission) -> dict:
 
 
 def _approval_to_dict(approval: Approval) -> dict:
+    # The scope is what the human reads before granting. If it does not name
+    # the command, the grant is a decision about "run_tests in /w" whose actual
+    # effect is whatever argv the job carries - a decision made blind. Decode
+    # for display so the reader sees argv, not the storage encoding, and fall
+    # back to the raw string for a pre-fix row so listing approvals still works.
+    try:
+        scope_command = decode_command(approval.scope.command)
+    except CommandFormatError:
+        scope_command = approval.scope.command
     return {
         "id": approval.id,
         "job_id": approval.job_id,
@@ -106,6 +115,7 @@ def _approval_to_dict(approval: Approval) -> dict:
             "executor": approval.scope.executor,
             "workspace_paths": list(approval.scope.workspace_paths),
             "actions": list(approval.scope.actions),
+            "command": scope_command,
         },
         "requested_at": approval.requested_at,
         "decided_at": approval.decided_at,
@@ -329,7 +339,32 @@ class AgentOSApi:
                 executor=s.get("executor", ""),
                 workspace_paths=tuple(s.get("workspace_paths", [])),
                 actions=tuple(s.get("actions", [])),
+                # `command` in the request body is IGNORED on purpose. The scope
+                # is a bound the caller may propose; the command is the
+                # operation itself and must come from the job. If a caller could
+                # set it, the scope and the job could disagree and the human
+                # would grant one thing while another runs - which is exactly
+                # the blind-decision defect F1 describes, reachable from the
+                # request body.
+                command=None,
             )
+            if "command" in s:
+                # Record that the caller tried, so a client sending this cannot
+                # believe it worked. Both sinks, like every other refusal here:
+                # record_event is what /api/events serves (durable, queryable),
+                # log_event is what the log viewer shows. Emitting only the log
+                # would leave the attempt invisible to an operator reading the
+                # event stream - a test caught exactly that.
+                self.service.store.record_event(
+                    "approval.scope_command_ignored",
+                    {"job_id": job_id, "field": "scope.command"},
+                )
+                log_event(
+                    _log,
+                    logging.WARNING,
+                    "approval.scope_command_ignored",
+                    job_id=job_id,
+                )
         return self.service.request_approval(job_id, expires_at=expires_at, scope=scope)
 
     def _decide(self, approval_id: str, body: dict) -> Approval:

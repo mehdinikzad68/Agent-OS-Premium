@@ -287,6 +287,7 @@ class Store:
                                 "executor": approval.scope.executor,
                                 "workspace_paths": list(approval.scope.workspace_paths),
                                 "actions": list(approval.scope.actions),
+                                "command": approval.scope.command,
                             }
                         ),
                         approval.requested_at, approval.decided_at,
@@ -338,6 +339,13 @@ class Store:
                 executor=scope_raw["executor"],
                 workspace_paths=tuple(scope_raw["workspace_paths"]),
                 actions=tuple(scope_raw["actions"]),
+                # Migration: an approval row written before `command` joined
+                # the scope has no such key. Reading it as None is the honest
+                # interpretation - that grant authorized no command - and it is
+                # NOT a wildcard, so validate_dispatch will refuse any job that
+                # actually carries one. This is why the fix needs no schema
+                # migration: the column is already a JSON blob.
+                command=scope_raw.get("command"),
             ),
             requested_at=row["requested_at"],
             decided_at=row["decided_at"],

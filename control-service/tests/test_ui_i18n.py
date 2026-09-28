@@ -510,7 +510,15 @@ class UiI18nTest(unittest.TestCase):
                 if _re.fullmatch(r"[\w.\[\]]*(attempt_no|seq)\b[\w.\[\]]*", expr):
                     continue
                 if expr in ("actions.join(\"\")", "evidenceHtml", "ts", "e.kind",
+                            "cmdSafe",
                             "badges ? `<div class=\"m\">${badges}</div>` : \"\""):
+                    # cmdSafe is escaped-at-construction markup: it is built as
+                    # `escapeHtml(cmdHtml)` and cmdHtml only ever contains
+                    # escapeHtml(join) of the argv, wrapped in a literal div.
+                    # The scanner cannot follow that, so it is named here -
+                    # the same standing as evidenceHtml above. If a future
+                    # change makes cmdSafe carry anything else, this allowlist
+                    # entry becomes the thing to question.
                     continue
                 if expr == "a.id":
                     # server-generated approval id, and escapeHtml would NOT

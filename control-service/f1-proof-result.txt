@@ -1,0 +1,15 @@
+0. mission mission-799dcbacd1cf
+1. scope as the human receives it: {"executor": "subprocess-executor", "workspace_paths": ["/tmp/f1-proof-y5ljqe45/src"], "actions": ["run_tests"], "command": ["/usr/bin/python3", "calc.py"]}
+   the command IS visible, as argv: ['/usr/bin/python3', 'calc.py']
+   BEFORE the fix this scope had only executor/workspace_paths/actions,
+   so a grant meant 'run_tests in /w' with the effect being whatever
+   argv the job carried - a decision made blind.
+2b. scope.command stored as: ['echo', 'attacker-chosen']
+    (the job's own command, not the body's - as designed)
+   the ignored attempt is in the event stream: True
+   approval.scope_command_ignored is in /api/events - an operator
+   reading the event stream can see the attempt.
+3. honestly approved job dispatched: state=completed_verified
+   the real subprocess ran and its stdout reached the API
+   the live workspace is untouched
+VERDICT: PROVEN - the human's approval now names the command, a body-supplied command is ignored and recorded, and a real subprocess still runs end to end

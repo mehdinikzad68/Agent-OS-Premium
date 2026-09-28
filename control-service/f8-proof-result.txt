@@ -1,11 +1,11 @@
 0. registered executors: {'executors': ['fake-executor', 'subprocess-executor']}
-1. mission created over HTTP: mission-c5ebbf9efbfb
+1. mission created over HTTP: mission-8d7f1dec30fd
 2. proposal accepted with argv=['/usr/bin/python3', 'calc.py']
    job.command as returned by the API: ['/usr/bin/python3', 'calc.py']
 3. sqlite typeof(command)='text' value='["/usr/bin/python3","calc.py"]'
 4. dispatch without approval returned 409 (must not be 2xx)
 5. approval granted (only HUMAN may decide)
-6. dispatch returned 200: {"receipt": {"job_id": "job-1b4e18722139", "attempt": 1, "final_state": "completed_verified", "duplicated": false}, "job": {"id": "job-1b4e18722139", "mission_id": "mission-c5ebbf9efbfb", "title": "run the real proof command", "proposed_by": "planner", "executor": "subprocess-executor", "workspace_paths": ["/tmp/f8-proof-ccjjged_/src"], "actions": ["run_command", "run_tests"], "state": "completed_
+6. dispatch returned 200: {"receipt": {"job_id": "job-32153db46ed0", "attempt": 1, "final_state": "completed_verified", "duplicated": false}, "job": {"id": "job-32153db46ed0", "mission_id": "mission-8d7f1dec30fd", "title": "run the real proof command", "proposed_by": "planner", "executor": "subprocess-executor", "workspace_paths": ["/tmp/f8-proof-tpyn1tfa/src"], "actions": ["run_command", "run_tests"], "state": "completed_
 7. final job state: completed_verified
    job keys: ['actions', 'attempt_no', 'command', 'created_at', 'executor', 'id', 'manifest_hash', 'mission_id', 'proposed_by', 'state', 'title', 'updated_at', 'workspace_paths']
    evidence endpoint returned 200

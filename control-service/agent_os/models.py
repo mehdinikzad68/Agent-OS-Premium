@@ -181,9 +181,27 @@ class Job:
 
 @dataclass
 class ApprovalScope:
+    """What the human was actually shown and agreed to.
+
+    Two kinds of field live here, and the difference is load-bearing:
+
+    - BOUNDS (executor, workspace_paths, actions) are ceilings. A caller may
+      propose a wider ceiling; the human sees it and can refuse.
+    - THE PAYLOAD (command) is the operation itself. It is never caller-set: it
+      is copied from the job by the service. A caller who could set it could
+      make the scope and the job disagree, and the human only ever sees one of
+      them - so one of the two would be a lie.
+
+    command is Optional and defaults to None so an approval row written before
+    this field existed still loads. Absent means "this approval authorized no
+    command", which is exactly what such a row did say at the time; it is not
+    treated as a wildcard.
+    """
+
     executor: str
     workspace_paths: tuple[str, ...]
     actions: tuple[str, ...]
+    command: Optional[str] = None
 
 
 @dataclass

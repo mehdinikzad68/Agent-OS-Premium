@@ -23,6 +23,19 @@ def validate_dispatch(job: Job, approval: Optional[Approval], now: datetime) -> 
       5. the job manifest hash still matches what was approved
       6. every requested workspace path is inside the approved scope
       7. every requested action is inside the approved scope
+      8. the command the job would run is byte-identical to the one the
+         approval was granted over
+
+    Check 8 is the one that makes the approval about a real operation. Until
+    it existed, a grant said "run_tests in /w on subprocess-executor" while
+    the effect was whatever argv job.command held - the human decided blind.
+    The manifest hash (check 5) already changed when the command changed, so
+    this is not closing an exploitable hole; it is replacing an implicit
+    dependency on one hash function with an explicit structural comparison.
+
+    Equality is on the stored canonical string, so this compares exactly what
+    the approval was granted over, with no re-encoding that could normalize two
+    different commands into one.
     """
     if approval is None:
         return "no_approval_record"
@@ -40,4 +53,8 @@ def validate_dispatch(job: Job, approval: Optional[Approval], now: datetime) -> 
     for action in job.actions:
         if action not in approval.scope.actions:
             return f"action_not_in_scope:{action}"
+    if approval.scope.command != job.command:
+        # Do not echo either command in the reason: it is caller-supplied and
+        # this string reaches the UI and the event log.
+        return "command_not_in_scope"
     return None
