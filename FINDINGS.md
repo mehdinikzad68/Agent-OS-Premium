@@ -497,7 +497,7 @@ surviving mutant (M9) after the first mutation run.
 
 ## F11 - a missing resource answers 500 instead of 404
 
-Status: **DEFERRED** (owner decision, 2026-09-28). Not a Phase 3 blocker.
+Status: **CLOSED** (owner-authorised, 2026-09-28). See the closure note at the end of this file.
 
 ### What it is
 
@@ -569,3 +569,77 @@ requests, plus every 401 and 404 path - all returned valid JSON. The server is
 `ThreadingHTTPServer`, so the slow discovery call does not block the others.
 Leading explanation, recorded as unconfirmed: the warnings came from the
 no-token session, before a token was entered.
+
+
+## F11 - a missing resource answered 500 instead of 404
+
+Status: **CLOSED** (owner-authorised, 2026-09-28).
+
+### The real cause was not what the status code suggested
+
+The deferred note said a `None` reached a public serialiser. That was wrong.
+`_mission_public` already raised `KeyError` for `None` and the dispatcher
+already caught `KeyError`. The server's own log named the real one:
+
+```
+api.internal_error  error=IndexError: list index out of range
+```
+
+`"/api/missions/".strip("/")` is `"api/missions"`, so `parts[2]` raised before
+any lookup happened. The finding was still reachable only with a valid token,
+so it was invisible in every earlier no-token session.
+
+### A second defect on the same path
+
+`activate_mission` updated the state, recorded the event and logged **before**
+asserting the mission existed. Activating a mission that does not exist wrote a
+`mission_activated` event into the feed for a mission that never existed, and
+then raised `AssertionError` (a 500) - an `assert` that also disappears under
+`-O`. The existence check now precedes every write.
+
+### What changed
+
+- `Api._segment()` reads an id segment or raises a 404; wired into all nine
+  single-resource routes, replacing raw `parts[2]` / `path.split("/")[3]`.
+- `ControlService.activate_mission` resolves the mission first and raises
+  `KeyError` before touching state, feed or log.
+
+### Evidence
+
+| | |
+|---|---|
+| tests | 20 new in `tests/test_f11.py`; suite is 396 |
+| proof | `f11_proof.py`, 15 checks, PROVEN |
+| anti-proof | M1, M3 and M5 all go RED with the guard removed |
+| regression | `f1_proof`, `f3_proof`, `f5_proof` still PROVEN; E2E PASS |
+
+### Two mutants that were honestly recorded
+
+- **M2 is equivalent.** `_segment` returning `""` instead of raising still yields
+  404, because an empty id looks up a row that cannot exist. Recorded as
+  equivalent, not dressed up as a kill.
+- **M3 initially survived, and the reason was the tests, not the code.** The
+  write-ordering tests shared a class-level server with a test that activates a
+  real mission, so the feed was already non-empty and a count comparison could
+  not attribute the mutant's event. They now live in `NoWriteOnRefusalTest`
+  with their own server, its own database, and an assertion that the feed
+  starts empty. M3 is then killed in isolation **and** in the full suite.
+
+A test that only fails when run alone is a test that has quietly stopped
+testing.
+
+
+### The two UI defects, now closed
+
+**`runDiscovery()` had no TOKEN guard** while `refresh()` is wrapped in
+`if (TOKEN)`. It now checks first and says so, with a catalog string in both
+languages (`ui.toolsNeedToken`), instead of issuing an unauthenticated request
+and reporting a generic failure.
+
+**Diagnostics captured `{status}` and rendered nothing.** The render line now
+prints the status and the method+path, so a warning can be traced to the
+request that caused it. This is the defect that made the five "response body
+was not JSON" warnings undiagnosable at the time.
+
+Both are held by tests in `test_f11.py` (M5, M6, M7, M8) and by the proof's
+anti-proof, which goes red without each one.

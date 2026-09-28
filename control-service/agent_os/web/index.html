@@ -206,6 +206,7 @@ const I18N = {
     "ui.toolsRegisterFail": "Registration refused",
     "ui.toolsRemoveFail": "Removal failed",
     "ui.toolsDiscoverFail": "Discovery failed",
+    "ui.toolsNeedToken": "No token entered - nothing was sent to the server. Enter the token in the Connection panel, then discover again.",
     "ui.toolsVersionUnknown": "version unknown",
     "ui.toolsSkipped": "Not probed",
     "ui.toolsSkippedHint": "On disk but not executed: these names are not on the probe allowlist.",
@@ -307,6 +308,7 @@ const I18N = {
     "ui.toolsRegisterFail": "ثبت رد شد",
     "ui.toolsRemoveFail": "حذف انجام نشد",
     "ui.toolsDiscoverFail": "کشف انجام نشد",
+    "ui.toolsNeedToken": "توکنی وارد نشده - هیچ درخواستی به سرور فرستاده نشد. توکن را در پنل اتصال وارد کنید و دوباره کشف را بزنید.",
     "ui.toolsVersionUnknown": "نسخه نامشخص",
     "ui.toolsSkipped": "کاوش نشد",
     "ui.toolsSkippedHint": "روی دیسک هست اما اجرا نشد: این نام‌ها در فهرست مجاز کاوش نیستند.",
@@ -515,7 +517,10 @@ function uiLog(level, message, fields) {
   const el = $("diag");
   if (el) el.textContent = UI_LOG.length
     ? UI_LOG.map((r) => `${r.at} ${r.level.toUpperCase().padEnd(5)} ${r.message}`
-        + (r.detail ? `  (${r.detail})` : "")).join("\n")
+        + (r.detail ? `  (${r.detail})` : "")
+        // status was captured all along and never shown, so a warning could
+        // not be traced to the request that caused it. Name the path too.
+        + (r.path ? `  [${r.status ?? "?"} ${r.path}]` : "")).join("\n")
     : "—";
 }
 
@@ -543,7 +548,8 @@ async function api(method, path, body) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = await resp.json().catch(() => {
-    uiLog("warn", "response body was not JSON", { status: resp.status });
+    uiLog("warn", "response body was not JSON",
+      { status: resp.status, path: `${method} ${path}` });
     return {};
   });
   if (!resp.ok) {
@@ -973,6 +979,14 @@ async function runDiscovery() {
   const msg = $("tool-msg");
   btn.disabled = true;
   msg.textContent = "";
+  // Same guard refresh() has. Without it this issues a real unauthenticated
+  // request and reports a generic failure, which reads as a broken panel
+  // rather than a missing token.
+  if (!TOKEN) {
+    msg.textContent = t("ui.toolsNeedToken");
+    btn.disabled = false;
+    return;
+  }
   try {
     const d = await api("GET", "/api/tools/discover");
     renderDiscovery(d);

@@ -56,7 +56,7 @@ Reproduce (all must exit 0):
 
 ```bash
 cd control-service
-python3 -B -m unittest discover -s tests -t .   # 376 tests
+python3 -B -m unittest discover -s tests -t .   # 396 tests
 python3 -B e2e_verify.py
 python3 -B check_ui.py
 ```
@@ -207,11 +207,18 @@ runs on."**
 Found by following the owner's own report, not by test coverage. None is a
 Phase 3 exit criterion; all are recorded so they are not lost.
 
-| item | what | why it was not fixed now |
+All three are now **closed** (owner-authorised 2026-09-28) - see below.
+
+| item | what | status |
 |---|---|---|
-| F11 | a missing resource answers 500 instead of 404, on four paths | no disclosure, auth is checked before routing, pre-existing, unreachable from the UI as built |
-| - | `runDiscovery()` issues an unauthenticated request when no token is set | UX defect, not safety |
-| - | Diagnostics captures `status` then never renders it, so a failed request cannot be identified | the same silence cost the most time in this phase |
+| F11 | a missing resource answers 500 instead of 404 | CLOSED - `f11_proof.py` 15/15, all mutants red |
+| - | `runDiscovery()` issues an unauthenticated request when no token is set | CLOSED - token guard + a message in both languages |
+| - | Diagnostics captures `status` then never renders it | CLOSED - the render now names the status and the request |
+
+The F11 cause was an `IndexError` on a missing path segment, not a `None`
+reaching a serialiser: the `KeyError` guard already existed and was already
+caught. The same function also wrote a `mission_activated` event for a mission
+that did not exist, before asserting; the check now precedes every write.
 
 **Not reproduced, recorded as unconfirmed:** the five "response body was not
 JSON" warnings the owner saw. Every path of the 4-second loop returned valid

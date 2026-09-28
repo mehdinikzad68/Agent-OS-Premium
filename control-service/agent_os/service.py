@@ -308,12 +308,18 @@ class ControlService:
         return mission
 
     def activate_mission(self, mission_id: str) -> Mission:
+        mission = self.store.get_mission(mission_id)
+        if mission is None:
+            # Checked BEFORE any write. The previous order updated the state,
+            # recorded the event and logged, then asserted - so activating a
+            # mission that does not exist still wrote an event to the feed, and
+            # the bare `assert` raised AssertionError (a 500) instead of the
+            # 404 the caller deserves. An assert also disappears under -O.
+            raise KeyError(f"mission not found: {mission_id!r}")
         self.store.update_mission_state(mission_id, MissionState.ACTIVE)
         self.store.record_event("mission_activated", {"mission_id": mission_id})
         log_event(_log, logging.INFO, "mission.activated", mission_id=mission_id)
-        mission = self.store.get_mission(mission_id)
-        assert mission is not None
-        return mission
+        return self.store.get_mission(mission_id)
 
     # ------------------------------------------------------------------
     # job proposals (planner may propose; proposing is not executing)

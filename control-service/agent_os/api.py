@@ -217,6 +217,19 @@ class AgentOSApi:
 
     # -- GET ----------------------------------------------------------------
 
+    @staticmethod
+    def _segment(parts: list[str], index: int, kind: str) -> str:
+        """Read an id segment, or 404 when the path has no id at all.
+
+        `"/api/missions/".strip("/")` is `"api/missions"`, so `parts[2]` raised
+        IndexError before any lookup happened, and the last-resort guard turned
+        it into an opaque 500. A path with no id names no resource, so it is a
+        404 - the same answer a well-formed but unknown id already gets.
+        """
+        if index >= len(parts) or not parts[index]:
+            raise ApiError(404, "not_found", f"{kind} not found: no id in path")
+        return parts[index]
+
     def _get(self, path: str) -> tuple[int, object]:
         p = path.strip("/").split("/")
         if path == "/api/status":
@@ -224,17 +237,20 @@ class AgentOSApi:
         if path == "/api/missions":
             return 200, {"missions": [self._mission_public(m) for m in self._all_missions()]}
         if path.startswith("/api/missions/"):
-            return 200, self._mission_public(self.service.store.get_mission(p[2]))
+            return 200, self._mission_public(
+                self.service.store.get_mission(self._segment(p, 2, "mission")))
         if path == "/api/jobs":
             return 200, {"jobs": [self._job_public(j) for j in self._all_jobs()]}
         if path.startswith("/api/jobs/") and path.endswith("/evidence"):
-            return 200, self._job_evidence(p[2])
+            return 200, self._job_evidence(self._segment(p, 2, "job"))
         if path.startswith("/api/jobs/"):
-            return 200, self._job_public(self.service.store.get_job(p[2]))
+            return 200, self._job_public(
+                self.service.store.get_job(self._segment(p, 2, "job")))
         if path == "/api/approvals":
             return 200, {"approvals": [self._approval_public(a) for a in self._all_approvals()]}
         if path.startswith("/api/approvals/"):
-            return 200, self._approval_public(self.service.store.get_approval(p[2]))
+            return 200, self._approval_public(
+                self.service.store.get_approval(self._segment(p, 2, "approval")))
         if path == "/api/projects":
             return 200, {"projects": [self._project_public(p) for p in self.service.list_projects()]}
         if path == "/api/events":
@@ -265,13 +281,17 @@ class AgentOSApi:
         if path == "/api/approvals":
             return 201, self._approval_public(self._request_approval(body))
         if path.startswith("/api/approvals/") and path.endswith("/decide"):
-            return 200, self._approval_public(self._decide(path.split("/")[3], body))
+            return 200, self._approval_public(
+                self._decide(self._segment(path.strip("/").split("/"), 2, "approval"), body))
         if path.startswith("/api/missions/") and path.endswith("/activate"):
-            return 200, self._mission_public(self.service.activate_mission(path.split("/")[3]))
+            return 200, self._mission_public(
+                self.service.activate_mission(self._segment(path.strip("/").split("/"), 2, "mission")))
         if path.startswith("/api/jobs/") and path.endswith("/dispatch"):
-            return 200, self._dispatch(path.split("/")[3])
+            return 200, self._dispatch(
+                self._segment(path.strip("/").split("/"), 2, "job"))
         if path.startswith("/api/jobs/") and path.endswith("/reconcile"):
-            return 200, self._job_public(self._reconcile(path.split("/")[3], body))
+            return 200, self._job_public(self._reconcile(
+                self._segment(path.strip("/").split("/"), 2, "job"), body))
         if path == "/api/tools/discover":
             return 200, self._discover(body)
         if path == "/api/tools/registry":
@@ -283,7 +303,7 @@ class AgentOSApi:
     def _delete(self, path: str) -> tuple[int, object]:
         p = path.strip("/").split("/")
         if path.startswith("/api/projects/"):
-            return 200, self._remove_project(p[2])
+            return 200, self._remove_project(self._segment(p, 2, "project"))
         if path.startswith("/api/tools/registry/"):
             return 200, {"removed": self.service.remove_tool(p[3])}
         raise ApiError(404, "not_found", f"unknown route: {path}")
