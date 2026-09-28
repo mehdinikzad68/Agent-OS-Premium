@@ -29,7 +29,7 @@ matters as much as the list: a reviewer's report is a hypothesis, not a finding.
 
 | | Finding | Severity | Status |
 |---|---|---|---|
-| F1 | An approval did not name the command it authorized | critical (conditional) | **CLOSED** — `e2aed6e` |
+| F1 | An approval did not name the command it authorized | critical (conditional) | **CLOSED** — `e2aed6e`; proof repaired `a9e111e` |
 | F2 | `cwd` is a starting point, not a boundary; writes outside are not prevented | high | **PARTIAL** — declared in `cddcb46`, real boundary is Phase 6 |
 | F3 | `kill()` does not kill the process group; a backgrounded child survives the timeout | medium | **OPEN** |
 | F4 | The `command` type annotation was neither a guard nor correct | medium | **CLOSED** — `cddcb46` (edge validation) + `6079c22` (storage) |
@@ -73,6 +73,37 @@ is a field that can lie.** Bounds (`executor`, `workspace_paths`, `actions`) are
 ceilings a caller may propose and a human may refuse. The payload (`command`)
 is the operation and is never caller-set — enforced in the service, not only at
 the API edge, because a direct service caller can reach it too.
+
+### The fix shipped, but its proof could not fail (`a9e111e`)
+
+The first version of `f1_proof.py` was green for a full phase and was not
+evidence. Every step in it dispatched an **honestly approved** job, so
+
+```python
+if approval.scope.command != job.command:
+```
+
+was never `False` in any scenario the proof built. Measured: replacing only
+that line with `if False:` still printed `PROVEN`. The proof exercised the
+feature's happy path and never the branch the finding is about.
+
+Proof step 4 now covers the gap — a job is approved and granted, then the
+**stored** `scope_json` is rewritten to name a different command, the row a
+confused writer or a pre-fix insert would leave. The job is untouched, so
+`manifest_hash` still matches and the refusal can only be the command check:
+
+| | dispatch result |
+|---|---|
+| real code | `409 command_not_in_scope` |
+| command check disabled | `200 completed_verified` — the tampered command ran |
+
+Refusing *for the named reason* is the evidence. Asserting only `status >= 400`
+would also have passed on the manifest check, which is a different guarantee.
+
+**The generalisable lesson, and the reason this is in the register rather than
+only in the commit:** enumerate the states a proof exercises and ask which one
+makes the guarded branch false. A proof assembled from happy paths can be
+proof of a feature that is absent.
 
 ## F2 — `cwd` is not a boundary — PARTIAL, deferred to Phase 6
 
