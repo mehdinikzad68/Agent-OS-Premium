@@ -50,7 +50,7 @@ registration path contains no `subprocess`, `Popen`, `docker`, `mount` or
 | **Tool discovery installs nothing and writes no file** | F-phase3: `p3_proof.py` over real HTTP — 21 checks; a directory that is watched for new files stays empty | pass |
 | **An unreadable tool version is reported `unknown`, never guessed** | 31 unit tests; the recogniser matched from the start of the line, so "loaded 3 plugins" cannot become version 3 | pass |
 | **A discovered tool is not thereby permitted to run** | `grants_execution` is `False` on every row; the executor list is byte-identical before and after; the executor source never reads the tool table | pass |
-| **Registration and removal are reviewable from the UI** | `check_ui.py` + 28 UI tests, 13/13 mutations killed | pass |
+| **Registration and removal are reviewable from the UI** | `check_ui.py` + 28 UI tests, 13/13 mutations killed — **structure and wiring only, never rendered** | partial |
 
 Reproduce (all must exit 0):
 
@@ -92,6 +92,16 @@ red when the fix is disabled.
 
 ## 2. NOT implemented (deliberately, each needs a separate decision)
 
+- **The tool panel has never been seen rendered.** No browser on this host can
+  reach the WSL server (a navigation attempt timed out at 420 s), so the panel
+  was verified as markup, wiring and escaping - not as pixels. Three things are
+  therefore unestablished: that it is *visible*, that the Persian text is
+  *legible* in the panel, and that it is *discoverable* - it is the last
+  element on a scrolling page, below the event feed, the diagnostics box and
+  the project list. A fresh database also shows both lists empty, which on
+  screen is indistinguishable from "the feature is missing". The owner
+  reported not seeing it, which is the evidence that discoverability is not
+  established. Treat the UI as written-but-unconfirmed.
 - **Tool discovery exists but is not approved, and grants nothing.** Probing,
   the registry, and the UI panel are built and tested. What does not exist is
   the owner's acceptance, and — more importantly — any path from a registered

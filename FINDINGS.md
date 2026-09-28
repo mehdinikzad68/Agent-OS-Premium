@@ -335,7 +335,7 @@ The three exit criteria, measured on the running product:
 |---|---|
 | discovery installs nothing and writes no file | a watched directory is empty after a real HTTP discovery run |
 | an unknown path or non-standard output yields `unknown` | "loaded 3 plugins" cannot become version 3; the recogniser matches from the start of the line |
-| registering **and removing** a tool, reviewable from the UI | both buttons present, both wired, 28 UI tests, 13/13 mutations killed |
+| registering **and removing** a tool, reviewable from the UI | both buttons present, both wired, 28 UI tests, 13/13 mutations killed — **structure only, never rendered** |
 
 The constraint the roadmap states — a discovered tool is not thereby allowed to
 run — is enforced in three independent places, because one assertion is easy to
@@ -352,6 +352,13 @@ for a later change to reach.
 
 **What is NOT claimed:** nothing in the registry can be executed. A registered
 tool is a record the owner made, not a capability.
+
+**And what is claimed too strongly:** "reviewable from the UI". The panel was
+verified as markup, wiring and escaping. It was never rendered — no browser on
+this host reaches the WSL server. So visibility, Persian legibility and
+discoverability are all unestablished, and the panel being the last element on
+a scrolling page is a real gap, not a neutral detail. The owner's report that
+they could not see it is the evidence.
 
 With Phase 2 accepted, Phase 3 (Tool discovery and explicit registration) was
 unblocked. Its own exit criteria, from the roadmap:
