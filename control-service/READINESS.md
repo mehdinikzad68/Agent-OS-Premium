@@ -50,7 +50,7 @@ registration path contains no `subprocess`, `Popen`, `docker`, `mount` or
 | **Tool discovery installs nothing and writes no file** | F-phase3: `p3_proof.py` over real HTTP — 21 checks; a directory that is watched for new files stays empty | pass |
 | **An unreadable tool version is reported `unknown`, never guessed** | 31 unit tests; the recogniser matched from the start of the line, so "loaded 3 plugins" cannot become version 3 | pass |
 | **A discovered tool is not thereby permitted to run** | `grants_execution` is `False` on every row; the executor list is byte-identical before and after; the executor source never reads the tool table | pass |
-| **Registration and removal are reviewable from the UI** | `check_ui.py` + 28 UI tests, 13/13 mutations killed — **structure and wiring only, never rendered** | partial |
+| **Registration and removal are reviewable from the UI** | `check_ui.py` + 28 UI tests, 13/13 mutations killed, and **seen rendered by the owner (2026-09-28)**: the panel lists the seven real tools with versions, the `exact`/`wsl`/`windows_mount` badges, the dsh Windows-through-WSL note, and `grants no execution` beside the registered git | pass |
 
 Reproduce (all must exit 0):
 
@@ -179,8 +179,13 @@ red when the fix is disabled.
 
 0. **Phase 3 acceptance** — the three exit criteria are measured and met
    (discovery writes nothing; `unknown` is reported rather than guessed;
-   register and remove are reviewable from the UI). The owner's acceptance is
-   the only thing outstanding, and it is a human decision.
+   register and remove are reviewable from the UI).
+
+   The UI row is now `pass` rather than `partial`: the owner opened the page and
+   the panel rendered. Three items came out of that session and are recorded in
+   the appendix - F11 and two UI defects - all deferred by owner decision, none
+   of them an exit criterion. What is still outstanding is the owner's
+   acceptance, which is a human decision.
 1. **Containment for workers** (F2 / Phase 6): decide the isolation model and
    write the negative tests that prove it. This is the only gate that blocks
    the product's central security claim.
@@ -196,6 +201,30 @@ dashboard. Nine security findings closed, one deliberately partial. Tool
 discovery and a reviewable registry exist and grant no execution rights. Not
 yet connected to any agent runtime, and not yet isolated from the machine it
 runs on."**
+
+## Open items deferred after the owner saw the UI work
+
+Found by following the owner's own report, not by test coverage. None is a
+Phase 3 exit criterion; all are recorded so they are not lost.
+
+| item | what | why it was not fixed now |
+|---|---|---|
+| F11 | a missing resource answers 500 instead of 404, on four paths | no disclosure, auth is checked before routing, pre-existing, unreachable from the UI as built |
+| - | `runDiscovery()` issues an unauthenticated request when no token is set | UX defect, not safety |
+| - | Diagnostics captures `status` then never renders it, so a failed request cannot be identified | the same silence cost the most time in this phase |
+
+**Not reproduced, recorded as unconfirmed:** the five "response body was not
+JSON" warnings the owner saw. Every path of the 4-second loop returned valid
+JSON across eight rounds, six concurrent requests, and every 401/404 path, and
+the server is a ThreadingHTTPServer. The leading explanation is the no-token
+session, but it was not confirmed.
+
+**Method note:** two conclusions in this phase were wrong and were corrected by
+measurement - a screenshot read as showing a different machine, and a missing
+token read as a broken panel. Both came from acting on weak evidence before
+measuring.
+
+---
 
 ## Appendix — two Phase 3 findings that changed the design
 

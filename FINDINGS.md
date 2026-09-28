@@ -493,3 +493,79 @@ asserts the projects endpoint does not read a scope field.
 a test that only unsets the environment variable measures the wrong branch.
 The unset-scope test patches the resolver instead — that branch was the one
 surviving mutant (M9) after the first mutation run.
+
+
+## F11 - a missing resource answers 500 instead of 404
+
+Status: **DEFERRED** (owner decision, 2026-09-28). Not a Phase 3 blocker.
+
+### What it is
+
+A route that resolves an object by id and does not find it passes `None` into a
+public serialiser, which dereferences it. The exception escapes as a 500.
+
+Measured on a live server, with a valid token:
+
+| request | now | correct |
+|---|---|---|
+| `GET /api/approvals/` | 500 | 404 |
+| `GET /api/missions/` | 500 | 404 |
+| `GET /api/jobs/` | 500 | 404 |
+| `POST /api/missions/<absent>/activate` | 500 | 404 |
+
+Four of eleven probed single-resource paths. Every path with a well-formed but
+absent id (`/api/approvals/approval_absent`) already answers 404 correctly, so
+the defect is specifically the empty/absent-segment case.
+
+### Why deferral is safe - measured, not assumed
+
+- **No disclosure.** The body is `{"error":{"code":"internal","message":"internal
+  error"}}`. No traceback, no file path, no system detail reaches the client.
+- **Not an auth defect.** Authentication is checked before routing, so a request
+  without a token can never reach this code. Ten unauthorised presses wrote
+  nothing and created nothing.
+- **Pre-existing.** It is in the original routing layer, not in the Phase 3 code.
+- **Not reachable from the UI as built.** The page builds these URLs by
+  concatenating an id taken from a row the server itself returned, and every
+  such row has an id.
+
+### One correction worth recording
+
+The owner's first hypothesis was that repeatedly pressing the buttons with no
+token caused the 500s. Measured: five presses each returned 401 every time, and
+the same URLs with a valid token return 500. The hypothesis was refuted, and
+inverted - a valid token is required to reach the defect at all.
+
+### Condition for opening it
+
+Any of: a caller passing a client-supplied id; a row that can render without an
+id; or a 500 that surfaces in the owner's logs during normal use.
+
+### Found while
+
+Investigating the owner's report that the Tools panel was empty. The report
+turned out to be a missing token, not a defect - but following the diagnostics
+warning it produced led here.
+
+
+### Two UI defects found from the owner's own use, both DEFERRED
+
+Neither is a Phase 3 exit criterion, and neither is a safety problem.
+
+**`runDiscovery()` has no TOKEN guard.** `refresh()` is wrapped in
+`if (TOKEN)`, but the Discover button is not. With no token it issues a real
+unauthenticated request and reports a generic failure. The fix is to check the
+token first and say where to get one.
+
+**Diagnostics drops the field that would identify the failure.** `uiLog()`
+stores `{status: resp.status}` for the "response body was not JSON" warning, but
+the render line only appends `r.detail`. The status is therefore captured and
+never shown. The owner saw five such warnings with no way to tell which request
+they came from - an observability tool that hides the fault is worse than none.
+
+The five warnings themselves were **not reproduced**. Measured against a live
+server: all six paths of the 4-second loop, eight rounds, plus six concurrent
+requests, plus every 401 and 404 path - all returned valid JSON. The server is
+`ThreadingHTTPServer`, so the slow discovery call does not block the others.
+Leading explanation, recorded as unconfirmed: the warnings came from the
+no-token session, before a token was entered.
