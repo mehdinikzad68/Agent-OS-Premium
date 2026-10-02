@@ -102,9 +102,13 @@ class CommandValidationTest(unittest.TestCase):
 
 
 class BypassIsDeclaredTest(unittest.TestCase):
-    """The roadmap's Phase 5 exit criterion: the bypass path must be identified
-    or explicitly declared. This pins the declaration, because deleting it
-    breaks nothing else - the module still starts and every other test passes.
+    """The remaining limits must be declared, not implied.
+
+    Phase 5 closed the approval-gate half of this: dispatch() now refuses a job
+    with no granted, unconsumed approval. The banner was rewritten to say so
+    and to keep naming what is STILL unbounded (F2, containment). These tests
+    pin that the declaration cannot be deleted or softened into a reassurance -
+    deleting it breaks nothing else, so nothing else would catch it.
     """
 
     @classmethod
@@ -112,11 +116,16 @@ class BypassIsDeclaredTest(unittest.TestCase):
         cls.text = (pathlib.Path(__file__).resolve().parents[1]
                     / "agent_os" / "cli.py").read_text(encoding="utf-8")
 
-    def test_the_banner_states_there_is_no_approval_gate(self):
-        self.assertIn("NO approval gate", self.text)
+    def test_the_banner_states_the_approval_gate_is_enforced(self):
+        # Phase 5 built the gate. The banner must not still claim it is absent,
+        # and must not overclaim either: the containment gap below is real.
+        self.assertIn("approval gate IS enforced", self.text)
 
-    def test_the_banner_names_the_phase_that_will_build_it(self):
-        self.assertIn("Phase 5", self.text)
+    def test_the_banner_still_names_the_unbounded_writes(self):
+        # The gate closed one gap; the containment gap did not close with it.
+        # A banner that dropped this would read as "sandboxed", which is false.
+        self.assertIn("STILL UNBOUNDED", self.text)
+        self.assertIn("Phase 6", self.text)
 
     def test_the_banner_does_not_claim_the_working_copy_is_a_boundary(self):
         # The phrase must survive as a negation. If someone later rewrote this
@@ -131,7 +140,7 @@ class BypassIsDeclaredTest(unittest.TestCase):
     def test_the_bypass_is_also_a_structured_event_not_only_a_print(self):
         # A print dies with the terminal; the event is queryable later.
         self.assertIn("executor.bypass_declared", self.text)
-        self.assertIn("approval_gate=False", self.text)
+        self.assertIn("approval_gate=True", self.text)
 
     def test_the_event_is_logged_at_WARNING_not_INFO(self):
         # Added after mutation M5 survived twice. The first attempt looked 200
@@ -161,14 +170,27 @@ class BypassIsDeclaredTest(unittest.TestCase):
             re.findall(r'"((?:[^"\\]|\\.)*)"', self.text[i:j])
         ).replace("\\n", "\n")
 
-    def test_all_four_risk_facts_are_in_the_single_event(self):
-        # One event, four fields, so an operator reading the event store sees
-        # the whole picture in one record instead of correlating three lines.
-        i = self.text.find('"executor.bypass_declared"')
-        window = self.text[i:i + 800]
-        for field in ("approval_gate=False", "approval_gate_planned_phase=",
-                      "writes_bounded=False", "timeout_kills_process_group="):
+    def test_the_risk_facts_are_in_the_single_event(self):
+        # One event carries the whole picture, so an operator reading the event
+        # store sees it in one record instead of correlating several lines.
+        #
+        # Read the whole log_event( ... ) call, not a fixed character window:
+        # an earlier version used a 800-char budget, so lengthening a nearby
+        # comment made this fail for a reason unrelated to the claim.
+        window = self._event_call()
+        for field in ("approval_gate=True", "writes_bounded=False",
+                      "timeout_kills_process_group="):
             self.assertIn(field, window, f"{field} is missing from the event")
+
+    def _event_call(self):
+        """The source of the executor.bypass_declared log_event() call."""
+        i = self.text.find('"executor.bypass_declared"')
+        self.assertGreater(i, 0, "the event name is gone entirely")
+        j = self.text.rfind("log_event(", 0, i)
+        self.assertGreater(j, 0, "the event is no longer emitted by log_event()")
+        end = self.text.find("\n        )", i)
+        self.assertGreater(end, i, "could not find the end of the log_event call")
+        return self.text[j:end]
 
     def test_the_event_records_the_unbounded_writes_fact_too(self):
         # Declaring only the approval gap would understate the risk: the child

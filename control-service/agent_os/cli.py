@@ -91,23 +91,28 @@ def cmd_serve(args) -> int:
             f"subprocess executor ENABLED (source={args.source_workspace}, "
             f"timeout={args.subprocess_timeout}s, sandbox_root={sandbox_root})"
         )
-        # The bypass, stated rather than implied. Without this line the log
-        # says the executor is on and says nothing about what is NOT stopping
-        # the command, and the next maintainer reasonably assumes the approval
-        # system is on the path. It is not. dispatch() never reads an approval.
-        # Phase 5 builds that gate; until then this is the declaration the
-        # roadmap's Phase 5 exit criterion asks for.
+        # The remaining limits, stated rather than implied. The approval gate
+        # this banner used to warn about was built in Phase 5: dispatch() now
+        # reads an approval and refuses without one (validate_dispatch ->
+        # "no_approval_record"). What is STILL true is the containment gap -
+        # the child runs with the server's own OS privileges and can write
+        # outside the sandbox. Saying that plainly is the whole point of the
+        # banner; deleting it would let the next maintainer read "gate on" as
+        # "sandboxed".
         bypass = (
-            "  WARNING: the dispatch path has NO approval gate. Any command "
-            "passed in POST /api/jobs runs on the next\n"
-            "           POST /api/jobs/<id>/dispatch. Approval enforcement is "
-            "Phase 5 and is not implemented.\n"
-            "           Also unbounded: the child may write outside the "
-            "sandbox. A timeout does\n"
-            "           kill the whole process group (SIGKILL to the child's "
-            "group), so no descendant\n"
-            "           outlives the call - but the working copy is not a "
-            "security boundary."
+            "  NOTE: the approval gate IS enforced on the dispatch path "
+            "(Phase 5). A dispatch\n"
+            "        without a granted, unconsumed approval is refused with "
+            "409 before the executor\n"
+            "        runs.\n"
+            "        STILL UNBOUNDED: the child runs with the server's own OS "
+            "privileges and may\n"
+            "        write outside the sandbox. A timeout does kill the whole "
+            "process group (SIGKILL\n"
+            "        to the child's group), so no descendant outlives the call "
+            "- but the working\n"
+            "        copy is not a security boundary. That is F2, deferred to "
+            "Phase 6."
         )
         print(bypass)
         # Same fact as a structured event, so it is queryable later and not
@@ -120,8 +125,10 @@ def cmd_serve(args) -> int:
             executor="subprocess-executor",
             source_workspace=str(args.source_workspace),
             sandbox_root=str(sandbox_root),
-            approval_gate=False,
-            approval_gate_planned_phase=5,
+            # True since Phase 5: dispatch() refuses a job with no granted,
+            # unconsumed approval. It was False and honest then; False now
+            # would understate the enforcement that exists.
+            approval_gate=True,
             writes_bounded=False,
             # True since F3: the child is started with start_new_session=True
             # and a timeout SIGKILLs the whole process group, so no descendant

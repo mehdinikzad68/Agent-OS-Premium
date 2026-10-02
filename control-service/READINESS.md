@@ -3,9 +3,13 @@
 This document states exactly what is verified, what is not, and what must be
 decided before this can be called integrated with real agent runtimes.
 
-Last measured: 2026-09-28, WSL2 Ubuntu-26.04, Python 3.14.4. Every number
+Last measured: 2026-10-02, WSL2 Ubuntu-26.04, Python 3.14.4. Every number
 below was produced on that machine on that day. The tree is uncommitted at the
 time of writing; the counts are measured, not asserted.
+
+This revision covers Phase 5 (a real approval gate) and a test-harness defect
+found while verifying it. The Phase 3 and Phase 4 rows are unchanged and were
+not re-measured.
 
 ## 0. Phase status
 
@@ -15,8 +19,8 @@ time of writing; the counts are measured, not asserted.
 | 1 | Bilingual i18n / RTL-LTR | complete — owner accepted |
 | 2 | Project registry, read-only | complete — **owner accepted 2026-09-28** |
 | 3 | Tool discovery + explicit registration | **code complete, owner gate not yet granted** |
-| 4 | Honest event ingestion | event store exists; the operational timeline is not built |
-| 5 | A real approval gate for one limited action | approval + policy exist; the gate is not yet a full product surface |
+| 4 | Honest event ingestion | code complete, PROVEN on the real profile; owner acceptance not yet granted |
+| 5 | A real approval gate for one limited action | code complete and PROVEN; owner acceptance not yet granted |
 | 6 | Per-project runner and constrained authority | not started — this is where F2 belongs |
 | 7–10 | Everyday loop, Mission Control, personalisation, release | not started |
 
@@ -30,7 +34,7 @@ registration path contains no `subprocess`, `Popen`, `docker`, `mount` or
 
 | Capability | How it is verified | Result |
 |---|---|---|
-| Enforcement rules A1–A10 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **376/376** pass on Python 3.14.4 |
+| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **449/449** pass on Python 3.14.4 |
 | Full product flow over real HTTP | `e2e_verify.py` | PASS |
 | UI structural integrity + handler wiring | `check_ui.py` | pass |
 | Token auth fail-closed, loopback bind | `tests/test_api.py` | pass |
@@ -40,9 +44,14 @@ registration path contains no `subprocess`, `Popen`, `docker`, `mount` or
 | Durable state across restarts | A1 test + E2E | pass |
 | Deny-before-dispatch (expired / destination / manifest / tools) | A2/A3 tests + E2E | pass |
 | Idempotent dispatch + event dedup | A6 test + E2E | pass |
+| **An approval is single-use; a spent approval can never authorise a second execution** | `test_phase5.py` + `p5_proof.py` (4 checks) — PROVEN, and `NOT PROVEN` with policy check 9 removed | pass |
+| **An approval is bound to one action, not only a ceiling of actions** | `test_phase5.py` action-binding tests | pass |
+| **A grant survives a restart and is still single-use afterwards** | `test_phase5.py::RestartDurabilityTest` (restart against the same database) | pass |
+| **The dispatch path enforces the gate** — a job with no granted approval is refused before the executor runs | measured: `dispatch` raised `no_approval_record`, 0 executions | pass |
+| **The startup banner states the gate is enforced and names what is still unbounded** | `test_command_validation.py::BypassIsDeclaredTest` | pass |
 | Missing evidence never "verified" | A4 test + executor tests | pass |
 | Lost worker = `interrupted_unknown`, no auto-rerun | A5 test | pass |
-| Schema migration (v1→v2) | `MigrationTest` | pass |
+| Schema migration (v1 → current, v4) | `test_subprocess_executor.py::MigrationTest` | pass |
 | **An approval names the exact command it authorised** | F1: `f1_proof.py` over real HTTP — PROVEN, and `NOT PROVEN` when the policy check is disabled | pass |
 | **A timeout kills the whole process group, not just the child** | F3: `f3_proof.py` — PROVEN (marker unchanged, zero survivors) | pass |
 | **An escaping symlink refuses the run before anything is copied** | F5: `f5_proof.py` — PROVEN, and `NOT PROVEN` with the guard removed (the secret returned in the evidence body) | pass |
@@ -56,9 +65,11 @@ Reproduce (all must exit 0):
 
 ```bash
 cd control-service
-python3 -B -m unittest discover -s tests -t .   # 396 tests
-python3 -B e2e_verify.py
+python3 -B -m unittest discover -s tests -t .   # 449 tests
+python3 -B e2e_verify.py                        # 11 steps
 python3 -B check_ui.py
+python3 -B p5_proof.py                          # Phase 5: single-use, over real HTTP
+python3 -B p5_mutation_check.py                 # ...and it goes red without the guard
 ```
 
 ### Findings closed since the last revision
@@ -89,6 +100,47 @@ The recurring shape: every one of these sat on a path no test exercised. A
 green suite was reporting what it covered, not breadth. Each fix shipped with
 a mutation run and, where the claim was behavioural, an HTTP proof that goes
 red when the fix is disabled.
+
+### The test harness lied, and had done so since Phase 4
+
+Four suites (`test_f11`, `test_phase5`, `test_tool_api`, `test_ingest_api`)
+each booted a real server on a **hard-coded port** and treated any `200` on
+`/api/status` as readiness. That probe cannot tell *whose* server answered.
+
+When a run is killed mid-suite, its child server survives as an orphan and
+keeps the port. The next run's own child then fails to bind, but the probe
+still succeeds against the orphan - so the suite silently asserts against a
+**stale database**. Observed: `added 0 != 3` / `skipped 3` in the ingest suite
+(talking to a server from a previous run), and `Connection refused` in the tool
+suite once the orphan was reaped. Neither reproduced in isolation.
+
+This exact failure had already been diagnosed and written down in Phase 4 -
+`FINDINGS.md` records "port collision on test harness caused false results" -
+but the fix landed only in `p4_real_proof.py`. The four shared suites kept the
+defect, which is why it resurfaced here.
+
+The fix removes the class, not one instance:
+
+- the port is chosen by the kernel (`--port 0`) and parsed from the banner the
+  CLI prints **after** binding, so two suites cannot collide and an orphan
+  cannot occupy the port we asked for;
+- readiness is proven against our own child: `/api/status` must report the
+  `db_path` we handed it, so a foreign server fails loudly instead of silently;
+- the child runs in its own session and is killed by process group.
+
+Verified by starting a **decoy server on the old fixed port 8893** and running
+the full suite: 449/449 pass, no orphan left behind. There is deliberately no
+"reap leftover servers" helper - a pattern matching the test server's command
+line also matches an operator's real instance.
+
+A second defect in the same area was self-inflicted and is recorded because it
+was found by the end-to-end verifier, not by a unit test: an early Phase 5 edit
+moved the consumed-approval check **ahead of** the documented A6 idempotency
+check. That turned a replay of a finished job from `200 duplicated=true` into a
+`409`, breaking `e2e_verify.py` step 7. The order was restored: A6 answers a
+replay first, and single-use is enforced by the action running once
+(`store.consume_approval` is atomic on first dispatch) plus policy check 9 -
+not by turning a retry into an error.
 
 ## 2. NOT implemented (deliberately, each needs a separate decision)
 
@@ -142,6 +194,13 @@ red when the fix is disabled.
 
 - SQLite single-writer: all store access is serialized by an in-process
   `RLock`. Fine for one local user; not for concurrent multi-process writers.
+- **No concurrency test for single-use.** `consume_approval` is an atomic
+  `UPDATE ... WHERE consumed_at IS NULL`, so a double spend cannot succeed, but
+  no test fires two dispatches simultaneously. All store access is serialized
+  by one in-process `RLock`, so a meaningful test needs a second process.
+- **Approval expiry has no default TTL.** `request_approval(expires_at=None)`
+  creates a grant that never expires; the caller must pass `expires_at`. The
+  expiry *check* is enforced (`approval_expired`), the *default* is absent.
 - `interrupted_unknown` is terminal for automation by design — it needs a human.
 - Disposable sandboxes are deleted after each run unless `--keep-sandbox`.
   A delete that fails is now **recorded** (`failed_cleanups()`, plus a WARNING
@@ -181,6 +240,11 @@ red when the fix is disabled.
    (discovery writes nothing; `unknown` is reported rather than guessed;
    register and remove are reviewable from the UI).
 
+0b. **Phase 4 and Phase 5 acceptance** — both are code complete and PROVEN
+   (`p4_real_proof.py` on the real Hermes profile; `p5_proof.py` over real
+   HTTP, with its mutation check). What is outstanding is the owner's
+   acceptance, which is a human decision, not a measurement.
+
    The UI row is now `pass` rather than `partial`: the owner opened the page and
    the panel rendered. Three items came out of that session and are recorded in
    the appendix - F11 and two UI defects - all deferred by owner decision, none
@@ -198,9 +262,12 @@ Until those are done and re-verified, the honest status is:
 
 **"Local, single-user Mission Control with proven enforcement and a working
 dashboard. Nine security findings closed, one deliberately partial. Tool
-discovery and a reviewable registry exist and grant no execution rights. Not
-yet connected to any agent runtime, and not yet isolated from the machine it
-runs on."**
+discovery and a reviewable registry exist and grant no execution rights. The
+approval gate is real and enforced on the dispatch path: a job without a
+granted, unconsumed, action-bound approval is refused before the executor
+runs, and a spent approval can never authorise a second execution. Not yet
+connected to any agent runtime, and not yet isolated from the machine it runs
+on."**
 
 ## Open items deferred after the owner saw the UI work
 

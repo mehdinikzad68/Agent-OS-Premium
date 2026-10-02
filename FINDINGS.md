@@ -403,6 +403,59 @@ The exit criteria from the roadmap, measured against the owner's real, live Herm
    Opening Windows SQLite databases from WSL2 raised `disk I/O error` on plain read-only connections because locking is unsupported over Plan9/WSL filesystem mounts.
    *Fix:* `StateReader` uses `file:...mode=ro&immutable=1` with explicit documentation of stale-read semantics (acceptable for primary-key cursor traversal, but strictly isolated from the service's own operational store).
 
+### Phase 5 — A real approval gate for one limited action — code complete, PROVEN, AWAITING OWNER ACCEPTANCE
+
+The exit criteria from the roadmap, measured over real HTTP against a live server:
+
+| Exit criterion | Result | Evidence |
+|---|---|---|
+| The decision binds to action + target, not just a ceiling | ✅ PROVEN | The approval stores one `action`; `validate_dispatch` check 10 refuses when it is not among the job's actions (`test_phase5.py` 03/04/05) |
+| Single-use | ✅ PROVEN | `store.consume_approval` is an atomic `UPDATE ... WHERE consumed_at IS NULL`; `p5_proof.py` shows a spent approval cannot authorise a second execution even when the job is forced back to a dispatchable state |
+| The gate is on the real dispatch path | ✅ PROVEN | Measured: `dispatch` with no approval raised `no_approval_record` and the executor ran 0 times; `adapter.run` has exactly one call site (`service.py`) |
+| Restart / durability | ✅ PROVEN | `RestartDurabilityTest` restarts the process against the same database: the grant survives, is still usable, and is still single-use |
+| Timeout / denial fail closed | ✅ PROVEN | Missing, ungranted, expired, mismatched-destination, amended-manifest, out-of-scope and consumed approvals each return a distinct refusal before the executor is invoked |
+| The bypass path is identified or declared | ✅ PROVEN | `cli.py` prints and logs `executor.bypass_declared`; a test pins the banner so it cannot be deleted or softened into a reassurance |
+
+#### Two defects found while doing this, both worth keeping
+
+**1. The test harness had been lying since Phase 4, and the Phase 4 write-up already knew.**
+
+Four suites booted a real server on a hard-coded port and treated any `200` on
+`/api/status` as readiness. That cannot distinguish our child from an orphan
+left by a killed run, so the suite could assert against a stale database. It
+surfaced as `added 0 != 3` / `skipped 3` and as `Connection refused`, neither
+reproducible in isolation.
+
+The important part: **this exact defect is written down in this file, under
+Phase 4, as "port collision on test harness caused false results".** The fix
+landed only in `p4_real_proof.py`; the four shared suites kept the bug. A
+lesson recorded in one file and applied in one file is not a lesson applied.
+
+The fix is structural: kernel-chosen ports (`--port 0`), readiness proven
+against our own child by comparing `db_path`, process-group kill, and one
+shared helper (`tests/live_server.py`). Verified with a decoy server holding
+the old fixed port 8893 while the full suite ran green.
+
+**2. A Phase 5 edit inverted a documented contract, and only the E2E caught it.**
+
+Moving the consumed-approval check ahead of the A6 idempotency check turned a
+replay of a finished job from `200 duplicated=true` into `409`, breaking
+`e2e_verify.py` step 7 and contradicting README/READINESS. No unit test failed,
+because the tests had been edited to expect the new behaviour - which is
+exactly how a suite can be green and wrong at the same time.
+
+Confirmed against the pre-change tree (`git worktree add --detach HEAD`): step 7
+passed before. Restored. The rule: **single-use is enforced by the action
+running exactly once, not by turning a retry into an error.**
+
+#### Method note
+
+`p5_proof.py` was checked with `p5_mutation_check.py`, which removes policy
+check 9, runs the proof, and restores the file byte-for-byte. With the guard
+removed the proof reports `FAIL 3: a spent approval authorised a second
+execution` - so it is a proof and not a tautology. This is the same standard
+F1, F3, F5 and F11 were held to.
+
 ## Method notes worth keeping
 
 - The `agy` reviewers were wrong or unhelpful about 40% of the time. One

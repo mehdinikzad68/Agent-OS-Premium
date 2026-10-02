@@ -5,9 +5,10 @@ approvals, deny-before-dispatch enforcement, durable audit trail, and a built-in
 web dashboard. Zero dependencies — Python standard library only.
 
 > **Status: locally testable product, single-user, pre-integration.**
-> The dashboard, API, approval enforcement, subprocess executor and durable
-> evidence are implemented and tested (32 unit tests + 11-step E2E, green).
-> Hermes/DSH/Antigravity are **not yet integrated** (separately gated by design).
+> The dashboard, API, approval enforcement, subprocess executor, durable
+> evidence and honest event ingestion are implemented and tested
+> (449 unit tests + 11-step E2E, green). Hermes/DSH/Antigravity are **not yet
+> integrated** (separately gated by design).
 > Honest limits: see [READINESS.md](READINESS.md).
 
 ## Quick start
@@ -27,7 +28,7 @@ token unless `--insecure` is passed (dev only).
 
 ```bat
 cd control-service
-C:\...\Python314\python.exe run_tests.py      :: 32 tests -> .test-results.txt
+C:\...\Python314\python.exe run_tests.py      :: 449 tests -> .test-results.txt
 C:\...\Python314\python.exe e2e_verify.py     :: 11-step product E2E -> e2e-result.txt
 C:\...\Python314\python.exe check_ui.py       :: UI structural validation
 ```
@@ -48,15 +49,20 @@ Both write file-based results (sandbox-safe). Exit code 0 = pass.
 | A8 | Token auth fail-closed; loopback-only; UI shell public, API protected | `test_api_*` |
 | A9 | Disposable workspace executor: never touches source, timeout = not success | `test_subprocess_*` |
 | A10 | Evidence durable in event log + served by API; oversized bodies refused (413) | `test_evidence_*`, `test_oversized_body_*` + E2E step 11 |
+| A11 | An approval is **single-use**: spent atomically on first dispatch, and a spent approval can never authorise another execution | `test_phase5.py` (single-use) + `p5_proof.py` |
+| A12 | An approval is **bound to one action**, not just a ceiling of actions | `test_phase5.py` (action binding) |
+| A13 | A grant **survives a restart** and is still usable, then still single-use | `test_phase5.py::RestartDurabilityTest` |
 
 ## Architecture (one paragraph)
 
 A deterministic `ControlService` owns an SQLite store (WAL, append-only event log,
 schema-versioned migrations). The **only** path from approval to execution is
-`dispatch()`: pure `validate_dispatch()` policy runs first (deny → 409, executor
-never invoked), then the dispatch intent is persisted, then the registered
-executor runs, then evidence is verified before any state becomes
-`completed_verified`. HTTP is a thin loopback adapter (`agent_os/api.py`);
+`dispatch()`: the A6 idempotency check answers a replay of a finished job
+first, then pure `validate_dispatch()` policy runs (deny → 409, executor never
+invoked; this is where a missing, expired, mismatched or already-consumed
+approval is refused), then the dispatch intent is persisted, then the approval
+is spent, then the registered executor runs, then evidence is verified before
+any state becomes `completed_verified`. HTTP is a thin loopback adapter (`agent_os/api.py`);
 executors live behind a named registry — `fake-executor` by default, the real
 `subprocess-executor` only with explicit `--enable-subprocess`.
 
@@ -82,7 +88,8 @@ agent_os/
   adapters/fake.py        scriptable fake executor (tests/enforcement)
   adapters/subprocess_executor.py   real gated executor, disposable workspace
   web/index.html          single-file RTL dashboard (offline, no CDN)
-tests/                    32 tests (A1–A10 + CLI gates)
+tests/                    449 tests (A1–A13 + CLI gates)
+tests/live_server.py      shared harness: OS-chosen port, identity-checked readiness
 run_tests.py              file-writing test runner (sandbox-safe)
 e2e_verify.py             11-step product verification over real HTTP
 check_ui.py               UI structural validation (balance + handler wiring)
