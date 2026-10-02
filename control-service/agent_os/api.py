@@ -25,6 +25,7 @@ from typing import Callable, Optional
 
 from .models import (
     Approval,
+    ApprovalAction,
     ApprovalDecision,
     ApprovalScope,
     CommandFormatError,
@@ -118,6 +119,7 @@ def _approval_to_dict(approval: Approval) -> dict:
             "workspace_paths": list(approval.scope.workspace_paths),
             "actions": list(approval.scope.actions),
             "command": scope_command,
+            "action": approval.scope.action,
         },
         "requested_at": approval.requested_at,
         "decided_at": approval.decided_at,
@@ -126,6 +128,7 @@ def _approval_to_dict(approval: Approval) -> dict:
             approval.expires_at.isoformat() if approval.expires_at else None
         ),
         "manifest_hash": approval.manifest_hash,
+        "consumed_at": approval.consumed_at,
     }
 
 
@@ -474,7 +477,15 @@ class AgentOSApi:
                     "approval.scope_command_ignored",
                     job_id=job_id,
                 )
-        return self.service.request_approval(job_id, expires_at=expires_at, scope=scope)
+        # Phase 5: action binding. The caller may specify which action this
+        # approval authorizes. If omitted, the service binds it to the job's
+        # first action.
+        action = body.get("action")
+        if action is not None:
+            action = ApprovalAction(action)
+        return self.service.request_approval(
+            job_id, expires_at=expires_at, scope=scope, action=action
+        )
 
     def _decide(self, approval_id: str, body: dict) -> Approval:
         decision = ApprovalDecision(self._require_str(body, "decision"))

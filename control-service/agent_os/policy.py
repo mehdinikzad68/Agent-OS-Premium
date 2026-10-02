@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from .models import Approval, ApprovalDecision, Job
+from .models import Approval, ApprovalAction, ApprovalDecision, Job
 
 
 def validate_dispatch(job: Job, approval: Optional[Approval], now: datetime) -> Optional[str]:
@@ -25,6 +25,8 @@ def validate_dispatch(job: Job, approval: Optional[Approval], now: datetime) -> 
       7. every requested action is inside the approved scope
       8. the command the job would run is byte-identical to the one the
          approval was granted over
+      9. the approval has not been consumed (single-use)
+     10. the approval's bound action is among the job's requested actions
 
     Check 8 is the one that makes the approval about a real operation. Until
     it existed, a grant said "run_tests in /w on subprocess-executor" while
@@ -57,4 +59,11 @@ def validate_dispatch(job: Job, approval: Optional[Approval], now: datetime) -> 
         # Do not echo either command in the reason: it is caller-supplied and
         # this string reaches the UI and the event log.
         return "command_not_in_scope"
+    # Check 9: single-use. A consumed approval is dead.
+    if approval.consumed_at is not None:
+        return "approval_already_consumed"
+    # Check 10: action binding. The approval authorizes ONE specific action.
+    if approval.scope.action is not None:
+        if not job.actions or approval.scope.action not in job.actions:
+            return f"action_not_approved:{approval.scope.action}"
     return None

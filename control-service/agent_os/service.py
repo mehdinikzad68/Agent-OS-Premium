@@ -40,6 +40,7 @@ from .paths import (
 
 from .models import (
     Approval,
+    ApprovalAction,
     ApprovalDecision,
     ApprovalScope,
     ConflictError,
@@ -486,6 +487,7 @@ class ControlService:
         expires_at: Optional[datetime] = None,
         now: Optional[datetime] = None,
         scope: Optional[ApprovalScope] = None,
+        action: Optional[str] = None,
     ) -> Approval:
         job = self.store.get_job(job_id)
         if job is None:
@@ -508,11 +510,18 @@ class ControlService:
         # would be shown a scope with no command while the job has one, and
         # "the approval does not name the operation" is exactly the blindness
         # F1 is about. A grant must always describe what it authorizes.
+        #
+        # Phase 5: action binding. The action is copied from the job's first
+        # action if not explicitly provided. This binds the approval to a
+        # specific operation, not just a ceiling.
+        if action is None:
+            action = job.actions[0] if job.actions else None
         scope = ApprovalScope(
             executor=scope.executor,
             workspace_paths=scope.workspace_paths,
             actions=scope.actions,
             command=job.command,
+            action=action,
         )
         approval = Approval(
             id=_new_id("appr"),
@@ -614,6 +623,10 @@ class ControlService:
             raise DispatchRefused("interrupted_unknown_requires_human_reconcile")
 
         # A6: duplicate dispatch of an in-flight/finished intent is idempotent.
+        # This MUST stay ahead of the consumed-approval check below: a retry of
+        # a finished dispatch is a replay, not an error. The action already ran
+        # once (that is what single-use means); reporting 409 here would break
+        # the documented A6 contract and e2e step 7.
         if job.state in (JobState.DISPATCHED, JobState.RUNNING) or job.state in (
             JobState.COMPLETED_VERIFIED, JobState.COMPLETED_UNVERIFIED, JobState.FAILED
         ):
@@ -621,7 +634,9 @@ class ControlService:
                 job_id=job_id, attempt=job.attempt_no, final_state=job.state, duplicated=True
             )
 
-        # A2: policy validation BEFORE the executor is ever touched.
+        # A2: policy validation BEFORE the executor is ever touched. A
+        # consumed approval is refused here (policy check 9) - after A6, so an
+        # idempotent replay is not mistaken for a fresh, unauthorised attempt.
         approval = self.store.latest_approval_for_job(job_id)
         denial = validate_dispatch(job, approval, now)
         if denial is not None:
@@ -667,6 +682,17 @@ class ControlService:
             executor=job.executor,
             actions=list(job.actions),
         )
+
+        # Phase 5: consume the approval BEFORE the executor runs.
+        # This is the single-use enforcement: even if the executor crashes,
+        # the approval is already spent. A crashed job stays INTERRUPTED_UNKNOWN
+        # and cannot be re-dispatched with the same approval.
+        if approval is not None:
+            self.store.consume_approval(approval.id, iso(now))
+            self.store.record_event(
+                "approval_consumed",
+                {"approval_id": approval.id, "job_id": job_id, "attempt": attempt},
+            )
 
         try:
             outcome: WorkerOutcome = adapter.run(job, attempt)

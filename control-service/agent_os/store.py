@@ -11,6 +11,7 @@ Rules encoded here (AGENT-OS-HANDOFF.md section 7, memory model):
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
 import uuid
@@ -33,7 +34,7 @@ from .models import (
     utc_now,
 )
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -69,7 +70,9 @@ CREATE TABLE IF NOT EXISTS approvals (
   decided_at TEXT,
   decided_by TEXT,
   expires_at TEXT,
-  manifest_hash TEXT NOT NULL
+  manifest_hash TEXT NOT NULL,
+  consumed_at TEXT,
+  action TEXT
 );
 CREATE TABLE IF NOT EXISTS events (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,6 +132,13 @@ _MIGRATIONS: dict[int, list[str]] = {
              created_at TEXT NOT NULL,
              UNIQUE (environment, name, path)
            )""",
+    ],
+    # v3 -> v4: single-use approvals (Phase 5). Two new columns:
+    #   consumed_at - set when the approval is consumed by a dispatch
+    #   action - the specific ApprovalAction this grant authorizes
+    3: [
+        "ALTER TABLE approvals ADD COLUMN consumed_at TEXT",
+        "ALTER TABLE approvals ADD COLUMN action TEXT",
     ],
 }
 
@@ -197,12 +207,37 @@ class Store:
         except (ValueError, TypeError):
             return SCHEMA_VERSION
 
+    def _table_columns(self, table: str) -> set[str]:
+        """Return the set of column names for a table."""
+        rows = self.conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return {row[1] for row in rows}
+
+    def _add_column_if_missing(self, table: str, column: str, ddl: str) -> None:
+        """Add a column only if it does not already exist.
+
+        _SCHEMA creates all tables at the LATEST version, so a migrated
+        database may already have the column. ALTER TABLE ADD COLUMN has no
+        IF NOT EXISTS in SQLite, so we check first.
+        """
+        if column not in self._table_columns(table):
+            self.conn.execute(ddl)
+
     def _migrate(self, from_version: int) -> None:
         v = from_version
         while v < SCHEMA_VERSION:
             if v in _MIGRATIONS:
                 for stmt in _MIGRATIONS[v]:
-                    self.conn.execute(stmt)
+                    m = re.match(
+                        r"ALTER TABLE (\w+) ADD COLUMN (\w+) (.+)", stmt
+                    )
+                    if m:
+                        table, col, ddl = m.group(1), m.group(2), m.group(3)
+                        self._add_column_if_missing(
+                            table, col,
+                            f"ALTER TABLE {table} ADD COLUMN {col} {ddl}",
+                        )
+                    else:
+                        self.conn.execute(stmt)
             v += 1
 
     # -- tools -----------------------------------------------------------
@@ -397,8 +432,8 @@ class Store:
             with self.conn:
                 self.conn.execute(
                     "INSERT INTO approvals (id, job_id, decision, scope_json, requested_at,"
-                    " decided_at, decided_by, expires_at, manifest_hash)"
-                    " VALUES (?,?,?,?,?,?,?,?,?)",
+                    " decided_at, decided_by, expires_at, manifest_hash, consumed_at, action)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         approval.id, approval.job_id, approval.decision.value,
                         json.dumps(
@@ -407,12 +442,15 @@ class Store:
                                 "workspace_paths": list(approval.scope.workspace_paths),
                                 "actions": list(approval.scope.actions),
                                 "command": approval.scope.command,
+                                "action": approval.scope.action,
                             }
                         ),
                         approval.requested_at, approval.decided_at,
                         approval.decided_by.value if approval.decided_by else None,
                         iso(approval.expires_at) if approval.expires_at else None,
                         approval.manifest_hash,
+                        approval.consumed_at,
+                        approval.scope.action,
                     ),
                 )
 
@@ -445,6 +483,21 @@ class Store:
                     (decision.value, decided_at, decided_by.value, approval_id),
                 )
 
+    def consume_approval(self, approval_id: str, consumed_at: str) -> bool:
+        """Mark an approval as consumed. Returns False if already consumed.
+
+        This is the single-use enforcement: once consumed, the approval can
+        never be used again. The check is atomic - the UPDATE only succeeds
+        if consumed_at is still NULL.
+        """
+        with self._lock:
+            with self.conn:
+                cur = self.conn.execute(
+                    "UPDATE approvals SET consumed_at=? WHERE id=? AND consumed_at IS NULL",
+                    (consumed_at, approval_id),
+                )
+                return cur.rowcount > 0
+
     @staticmethod
     def _row_to_approval(row: Optional[sqlite3.Row]) -> Optional[Approval]:
         if row is None:
@@ -465,6 +518,8 @@ class Store:
                 # actually carries one. This is why the fix needs no schema
                 # migration: the column is already a JSON blob.
                 command=scope_raw.get("command"),
+                # Phase 5: action binding. Pre-Phase-5 rows have no action.
+                action=scope_raw.get("action"),
             ),
             requested_at=row["requested_at"],
             decided_at=row["decided_at"],
@@ -473,6 +528,8 @@ class Store:
                 datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None
             ),
             manifest_hash=row["manifest_hash"],
+            # Phase 5: single-use. Pre-Phase-5 rows have no consumed_at.
+            consumed_at=row["consumed_at"] if "consumed_at" in row.keys() else None,
         )
 
     # -- events (append-only) --------------------------------------------

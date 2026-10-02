@@ -134,6 +134,21 @@ class ApprovalDecision(str, Enum):
     DENIED = "denied"
 
 
+class ApprovalAction(str, Enum):
+    """The specific operation an approval authorizes.
+
+    An approval is bound to ONE action. A job whose actions do not include
+    that action cannot consume the grant - the ceiling (scope.actions) is a
+    separate check.
+    """
+
+    RUN_TESTS = "run_tests"
+    READ_FILE = "read_file"
+    WRITE_FILE = "write_file"
+    DELETE_FILE = "delete_file"
+    RUN_COMMAND = "run_command"
+
+
 @dataclass
 class Mission:
     id: str
@@ -202,6 +217,7 @@ class ApprovalScope:
     workspace_paths: tuple[str, ...]
     actions: tuple[str, ...]
     command: Optional[str] = None
+    action: Optional[str] = None
 
 
 @dataclass
@@ -215,6 +231,7 @@ class Approval:
     decided_by: Optional[Principal]
     expires_at: Optional[datetime]
     manifest_hash: str
+    consumed_at: Optional[str] = None
 
 
 class ProjectRejected(Exception):
