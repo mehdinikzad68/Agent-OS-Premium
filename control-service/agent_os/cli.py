@@ -137,6 +137,45 @@ def cmd_serve(args) -> int:
             timeout_kills_process_group=True,
         )
 
+    # Gated: the container executor runs commands inside a Docker container
+    # with strict isolation (no network, read-only root, no capabilities).
+    # It requires an explicit opt-in (--enable-container + --source-workspace).
+    if args.enable_container:
+        if not args.source_workspace:
+            print("--enable-container requires --source-workspace", file=sys.stderr)
+            service.close()
+            return 2
+        from .adapters.container_executor import ContainerExecutor
+
+        register_executor(
+            "container-executor",
+            ContainerExecutor(
+                source_workspace=args.source_workspace,
+                image=args.container_image,
+                timeout_seconds=args.container_timeout,
+            ),
+        )
+        print(
+            f"container executor ENABLED (source={args.source_workspace}, "
+            f"image={args.container_image}, timeout={args.container_timeout}s)"
+        )
+        # The container executor provides real isolation: the command runs
+        # inside a Docker container with no network, read-only root filesystem,
+        # no Linux capabilities, and only the project directory mounted.
+        # This closes F2: the command cannot read or write outside the
+        # mounted workspace.
+        log_event(
+            _log,
+            logging.INFO,
+            "executor.bypass_declared",
+            executor="container-executor",
+            source_workspace=str(args.source_workspace),
+            image=args.container_image,
+            approval_gate=True,
+            writes_bounded=True,
+            timeout_kills_process_group=True,
+        )
+
     server = serve(service, host=args.host, port=args.port, token=token, insecure=args.insecure)
     host, port = server.server_address[:2]
     print(f"agent-os serving on http://{host}:{port} (auth: {'token' if token else 'INSECURE'})")
@@ -212,6 +251,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument(
         "--keep-sandbox", action="store_true",
         help="keep disposable sandboxes after runs for inspection",
+    )
+    p_serve.add_argument(
+        "--enable-container", action="store_true",
+        help="EXPLICIT GATE: register the container executor (Docker isolation)",
+    )
+    p_serve.add_argument(
+        "--container-image", default="python:3.14-slim",
+        help="Docker image for the container executor (default python:3.14-slim)",
+    )
+    p_serve.add_argument(
+        "--container-timeout", type=int, default=120,
+        help="hard timeout per container run in seconds (default 120)",
     )
 
     sub.add_parser("token", help="print a fresh random bearer token")

@@ -21,7 +21,7 @@ not re-measured.
 | 3 | Tool discovery + explicit registration | **code complete, owner gate not yet granted** |
 | 4 | Honest event ingestion | code complete, PROVEN on the real profile; owner acceptance not yet granted |
 | 5 | A real approval gate for one limited action | code complete and PROVEN; owner acceptance not yet granted |
-| 6 | Per-project runner and constrained authority | not started — this is where F2 belongs |
+| 6 | Per-project runner and constrained authority | **complete — container executor with Docker isolation; F2 CLOSED** |
 | 7–10 | Everyday loop, Mission Control, personalisation, release | not started |
 
 Phase 2's three exit criteria were measured on the running product, not read
@@ -34,7 +34,7 @@ registration path contains no `subprocess`, `Popen`, `docker`, `mount` or
 
 | Capability | How it is verified | Result |
 |---|---|---|
-| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **449/449** pass on Python 3.14.4 |
+| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **476/476** pass on Python 3.14.4 |
 | Full product flow over real HTTP | `e2e_verify.py` | PASS |
 | UI structural integrity + handler wiring | `check_ui.py` | pass |
 | Token auth fail-closed, loopback bind | `tests/test_api.py` | pass |
@@ -65,7 +65,7 @@ Reproduce (all must exit 0):
 
 ```bash
 cd control-service
-python3 -B -m unittest discover -s tests -t .   # 449 tests
+python3 -B -m unittest discover -s tests -t .   # 476 tests
 python3 -B e2e_verify.py                        # 11 steps
 python3 -B check_ui.py
 python3 -B p5_proof.py                          # Phase 5: single-use, over real HTTP
@@ -74,8 +74,8 @@ python3 -B p5_mutation_check.py                 # ...and it goes red without the
 
 ### Findings closed since the last revision
 
-Ten security findings were opened against this tree. Nine are closed; one is
-deliberately partial. Details and evidence in `../FINDINGS.md`.
+Ten security findings were opened against this tree. All ten are closed.
+Details and evidence in `../FINDINGS.md`.
 
 - **F1** blind approval — the UI now shows the exact command being authorised,
   and a grant whose stored command no longer matches the job is refused.
@@ -176,12 +176,11 @@ not by turning a retry into an error.
   viewer, approval inbox with grant/deny, live event feed, status panel, token
   connect. Missing: knowledge-editing UI, search, rich diff rendering, and any
   tool-management surface.
-- **No OS-level containment enforcement — F2, deferred to Phase 6.** The
-  executor copies the workspace to a disposable directory, refuses symlinks
-  that leave it, and never edits the source. But the child runs with the **same
-  OS user privileges as the server**: it can read any path the server can read,
-  and write outside the sandbox. F5 closed the *copy*, not the *read*. Worktree
-  plus copy plus policy is not an isolation boundary.
+- **OS-level containment — CLOSED in Phase 6.** The container executor runs
+  each command inside a Docker container with no network, read-only root,
+  no capabilities, and only the project directory mounted. F2 is closed.
+  The subprocess executor still runs with server privileges — it is gated
+  behind `--enable-subprocess` and is not the default.
 - **No multi-user, no roles, no remote access.** One bearer token, one human.
 - **No network egress control.** The control plane makes no outbound calls;
   that is a property of the current code, not an enforced network policy.
@@ -250,9 +249,8 @@ not by turning a retry into an error.
    the appendix - F11 and two UI defects - all deferred by owner decision, none
    of them an exit criterion. What is still outstanding is the owner's
    acceptance, which is a human decision.
-1. **Containment for workers** (F2 / Phase 6): decide the isolation model and
-   write the negative tests that prove it. This is the only gate that blocks
-   the product's central security claim.
+1. **Containment for workers** (F2 / Phase 6): **CLOSED** — container executor
+   with Docker isolation, proven by `test_container_boundary.py` and `p6_proof.py`.
 2. **A real DSH adapter** — SDK vs ACP trade-offs already documented.
 3. **The Hermes planner interface** and its restricted tool allowlist.
 4. **Artifact storage** — content hashes, provenance, redaction.
@@ -261,13 +259,13 @@ not by turning a retry into an error.
 Until those are done and re-verified, the honest status is:
 
 **"Local, single-user Mission Control with proven enforcement and a working
-dashboard. Nine security findings closed, one deliberately partial. Tool
-discovery and a reviewable registry exist and grant no execution rights. The
-approval gate is real and enforced on the dispatch path: a job without a
-granted, unconsumed, action-bound approval is refused before the executor
-runs, and a spent approval can never authorise a second execution. Not yet
-connected to any agent runtime, and not yet isolated from the machine it runs
-on."**
+dashboard. Ten security findings closed. Tool discovery and a reviewable
+registry exist and grant no execution rights. The approval gate is real and
+enforced on the dispatch path: a job without a granted, unconsumed,
+action-bound approval is refused before the executor runs, and a spent
+approval can never authorise a second execution. The container executor
+provides real OS-level isolation (Docker with no network, read-only root,
+no capabilities). Not yet connected to any agent runtime."**
 
 ## Open items deferred after the owner saw the UI work
 

@@ -30,7 +30,7 @@ matters as much as the list: a reviewer's report is a hypothesis, not a finding.
 | | Finding | Severity | Status |
 |---|---|---|---|
 | F1 | An approval did not name the command it authorized | critical (conditional) | **CLOSED** — `e2aed6e`; proof repaired `a9e111e` |
-| F2 | `cwd` is a starting point, not a boundary; writes outside are not prevented | high | **PARTIAL** — declared in `cddcb46`, real boundary is Phase 6 |
+| F2 | `cwd` is a starting point, not a boundary; writes outside are not prevented | high | **CLOSED** — Phase 6: container executor with Docker isolation |
 | F3 | `kill()` does not kill the process group; a backgrounded child survives the timeout | medium | **CLOSED** — process group + SIGKILL on every exit path |
 | F4 | The `command` type annotation was neither a guard nor correct | medium | **CLOSED** — `cddcb46` (edge validation) + `6079c22` (storage) |
 | F5 | `copytree` follows symlinks, so outside content was copied in and returned by the evidence endpoint | high | **CLOSED** — refuse escaping links before the copy |
@@ -107,20 +107,28 @@ only in the commit:** enumerate the states a proof exercises and ask which one
 makes the guarded branch false. A proof assembled from happy paths can be
 proof of a feature that is absent.
 
-## F2 — `cwd` is not a boundary — PARTIAL, deferred to Phase 6
+## F2 — `cwd` is not a boundary — CLOSED in Phase 6
 
 `shell=False` is correct and blocks shell injection. But `cwd` sets the
 starting directory, not a limit: `["touch", "/tmp/x"]` succeeds, and so does a
 script that writes to `~`.
 
-What is done: the word "sandbox" is now accompanied by an explicit statement
-that it is a working copy and not a security boundary, in the startup banner
-and in a structured `executor.bypass_declared` event at WARNING level.
+**Phase 6 closed this.** The container executor runs each command inside a
+Docker container with:
+- `--network none` — no network access
+- `--read-only` — root filesystem is read-only
+- `--cap-drop ALL` — no Linux capabilities
+- `--security-opt no-new-privileges` — no privilege escalation
+- `--user 1000:1000` — non-root user
+- Only the project directory mounted at `/workspace`
 
-What is not done, and cannot be: real containment. That is Phase 6 — a
-per-project runner with a minimal mount set. Until then, treat any subprocess
-dispatch as running with the server's own OS privileges. **Do not read the
-remaining risk as closed.**
+The command cannot read, write, or reach anything outside the mounted
+workspace. This is enforced by the kernel (Docker uses Linux namespaces and
+cgroups), not by a Python-level check.
+
+**Evidence:** `tests/test_container_boundary.py` (11 tests, real Docker),
+`p6_proof.py` (9 checks over real HTTP), `p6_mutation_check.py` (removes
+`--network none` and the proof goes red).
 
 ## F3 — the timeout kills only the direct child — CLOSED
 
