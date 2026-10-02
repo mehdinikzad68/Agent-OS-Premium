@@ -32,8 +32,9 @@ import urllib.request
 D = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(D))
 
+from tests.live_server import boot_server, stop_server  # noqa: E402
+
 TOKEN = "p4-api-token"
-PORT = "8873"
 
 
 def build_source(path, sessions, messages):
@@ -66,30 +67,14 @@ class IngestApiTest(unittest.TestCase):
         cls.tmp = pathlib.Path(tempfile.mkdtemp(prefix="p4api-"))
         cls.source = cls.tmp / "state.db"
         build_source(cls.source, SESSIONS, MESSAGES)
-        env = dict(os.environ, AGENT_OS_TOKEN=TOKEN)
-        cls.proc = subprocess.Popen(
-            [sys.executable, "-B", "-m", "agent_os.cli", "serve",
-             "--host", "127.0.0.1", "--port", PORT,
-             "--db", str(cls.tmp / "api.db")],
-            cwd=str(D), env=env, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, start_new_session=True)
-        cls.base = f"http://127.0.0.1:{PORT}"
-        end = time.time() + 40
-        while time.time() < end:
-            try:
-                cls._raw("GET", "/api/status")
-                return
-            except Exception:
-                time.sleep(0.25)
-        raise AssertionError("server did not start")
+        # The port is the kernel's choice, not ours: see tests/live_server.py
+        # for why a fixed port made this suite lie after a killed run.
+        cls.srv = boot_server(TOKEN, prefix="p4api-srv-")
+        cls.base = cls.srv["base"]
 
     @classmethod
     def tearDownClass(cls):
-        try:
-            os.killpg(os.getpgid(cls.proc.pid), signal.SIGKILL)
-            cls.proc.wait(timeout=10)
-        except OSError:
-            pass
+        stop_server(cls.srv)
         import shutil
         shutil.rmtree(cls.tmp, ignore_errors=True)
 

@@ -32,41 +32,23 @@ import urllib.request
 D = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(D))
 
+from tests.live_server import boot_server, stop_server  # noqa: E402
+
 TOKEN = "f11-test-token"
-PORT = "8877"
-PORT2 = "8875"   # the no-write class needs its own server
 
 
 class MissingResourceIs404Test(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = pathlib.Path(tempfile.mkdtemp(prefix="f11-"))
-        env = dict(os.environ, AGENT_OS_TOKEN=TOKEN)
-        cls.proc = subprocess.Popen(
-            [sys.executable, "-B", "-m", "agent_os.cli", "serve",
-             "--host", "127.0.0.1", "--port", PORT,
-             "--db", str(cls.tmp / "f11.db")],
-            cwd=str(D), env=env, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, start_new_session=True)
-        cls.base = f"http://127.0.0.1:{PORT}"
-        end = time.time() + 40
-        while time.time() < end:
-            try:
-                cls._raw("/api/status")
-                return
-            except Exception:
-                time.sleep(0.25)
-        raise AssertionError("server did not start")
+        # OS-chosen port (tests/live_server.py); the two classes still get
+        # separate servers and separate databases, as they must.
+        cls.srv = boot_server(TOKEN, prefix="f11-srv-", db_name="f11.db")
+        cls.tmp = cls.srv["tmp"]
+        cls.base = cls.srv["base"]
 
     @classmethod
     def tearDownClass(cls):
-        try:
-            os.killpg(os.getpgid(cls.proc.pid), signal.SIGKILL)
-            cls.proc.wait(timeout=10)
-        except OSError:
-            pass
-        import shutil
-        shutil.rmtree(cls.tmp, ignore_errors=True)
+        stop_server(cls.srv)
 
     @classmethod
     def _raw(cls, path, method="GET", body=None):
@@ -161,33 +143,13 @@ class NoWriteOnRefusalTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = pathlib.Path(tempfile.mkdtemp(prefix="f11nw-"))
-        env = dict(os.environ, AGENT_OS_TOKEN=TOKEN)
-        cls.proc = subprocess.Popen(
-            [sys.executable, "-B", "-m", "agent_os.cli", "serve",
-             "--host", "127.0.0.1", "--port", PORT2,
-             "--db", str(cls.tmp / "nw.db")],
-            cwd=str(D), env=env, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, start_new_session=True)
-        cls.base = f"http://127.0.0.1:{PORT2}"
-        end = time.time() + 40
-        while time.time() < end:
-            try:
-                cls._raw("/api/status")
-                return
-            except Exception:
-                time.sleep(0.25)
-        raise AssertionError("server did not start")
+        cls.srv = boot_server(TOKEN, prefix="f11nw-srv-", db_name="nw.db")
+        cls.tmp = cls.srv["tmp"]
+        cls.base = cls.srv["base"]
 
     @classmethod
     def tearDownClass(cls):
-        try:
-            os.killpg(os.getpgid(cls.proc.pid), signal.SIGKILL)
-            cls.proc.wait(timeout=10)
-        except OSError:
-            pass
-        import shutil
-        shutil.rmtree(cls.tmp, ignore_errors=True)
+        stop_server(cls.srv)
 
     @classmethod
     def _raw(cls, path, method="GET", body=None):

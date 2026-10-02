@@ -32,8 +32,9 @@ import urllib.request
 D = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(D))
 
+from tests.live_server import boot_server, stop_server  # noqa: E402
+
 TOKEN = "phase3-tool-token"
-PORT = "8893"
 
 
 def call(base, method, path, body=None, token=TOKEN):
@@ -62,39 +63,16 @@ class ToolApiTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = pathlib.Path(tempfile.mkdtemp(prefix="p3api-"))
-        env = dict(os.environ, AGENT_OS_TOKEN=TOKEN)
-        cls.proc = subprocess.Popen(
-            [sys.executable, "-B", "-m", "agent_os.cli", "serve",
-             "--host", "127.0.0.1", "--port", PORT,
-             "--db", str(cls.tmp / "tools.db")],
-            cwd=str(D), env=env, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, start_new_session=True)
-        cls.base = f"http://127.0.0.1:{PORT}"
-        end = time.time() + 40
-        while time.time() < end:
-            try:
-                urllib.request.urlopen(cls.base + "/api/status", timeout=2)
-                return
-            except urllib.error.HTTPError:
-                return
-            except Exception:
-                time.sleep(0.25)
-        raise RuntimeError("server never became ready")
+        # OS-chosen port (tests/live_server.py). The old probe accepted any
+        # 200 on a fixed port, so an orphan from a killed run could answer it
+        # and the suite then talked to a stale database.
+        cls.srv = boot_server(TOKEN, prefix="p3api-srv-", db_name="tools.db")
+        cls.tmp = cls.srv["tmp"]
+        cls.base = cls.srv["base"]
 
     @classmethod
     def tearDownClass(cls):
-        if cls.proc is not None:
-            try:
-                os.killpg(os.getpgid(cls.proc.pid), signal.SIGKILL)
-            except OSError:
-                cls.proc.terminate()
-            try:
-                cls.proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                pass
-        import shutil
-        shutil.rmtree(cls.tmp, ignore_errors=True)
+        stop_server(cls.srv)
 
     # -- discovery ------------------------------------------------------
 
@@ -167,48 +145,24 @@ class ToolApiTest(unittest.TestCase):
         # The server's own database must live OUTSIDE the watched directory, or
         # the test measures the server's bookkeeping and calls it a discovery
         # side effect. Watching an empty dir and pointing --db elsewhere makes
-        # any file that appears attributable to discovery.
-        dbdir = pathlib.Path(tempfile.mkdtemp(prefix="p3rodb-"))
+        # any file that appears attributable to discovery. HOME is redirected
+        # so a scan of the home directory sees this empty dir and nothing else.
         try:
             before = sorted(p.name for p in d.iterdir())
-            env = dict(os.environ, AGENT_OS_TOKEN=TOKEN, HOME=str(d))
-            proc = subprocess.Popen(
-                [sys.executable, "-B", "-m", "agent_os.cli", "serve",
-                 "--host", "127.0.0.1", "--port", "8894",
-                 "--db", str(dbdir / "x.db")],
-                cwd=str(D), env=env, stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL, start_new_session=True)
+            srv = boot_server(TOKEN, prefix="p3ro-srv-",
+                              env_extra={"HOME": str(d)})
             try:
-                end = time.time() + 40
-                while time.time() < end:
-                    try:
-                        urllib.request.urlopen(
-                            "http://127.0.0.1:8894/api/status", timeout=2)
-                        break
-                    except urllib.error.HTTPError:
-                        break
-                    except Exception:
-                        time.sleep(0.25)
-                st, _ = call("http://127.0.0.1:8894", "GET",
-                             "/api/tools/discover")
+                st, _ = call(srv["base"], "GET", "/api/tools/discover")
                 self.assertEqual(st, 200)
                 after = sorted(p.name for p in d.iterdir())
                 self.assertEqual(before, after,
                                  f"discovery created files: "
                                  f"{set(after) - set(before)}")
             finally:
-                try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                except OSError:
-                    proc.terminate()
-                try:
-                    proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    pass
+                stop_server(srv)
         finally:
             import shutil
             shutil.rmtree(d, ignore_errors=True)
-            shutil.rmtree(dbdir, ignore_errors=True)
 
     # -- registry --------------------------------------------------------
 
@@ -355,38 +309,13 @@ class SingleSourceOfTruth(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = pathlib.Path(tempfile.mkdtemp(prefix="p3src-"))
-        env = dict(os.environ, AGENT_OS_TOKEN=TOKEN)
-        cls.proc = subprocess.Popen(
-            [sys.executable, "-B", "-m", "agent_os.cli", "serve",
-             "--host", "127.0.0.1", "--port", "8898",
-             "--db", str(cls.tmp / "s.db")],
-            cwd=str(D), env=env, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, start_new_session=True)
-        cls.base = "http://127.0.0.1:8898"
-        end = time.time() + 40
-        while time.time() < end:
-            try:
-                urllib.request.urlopen(cls.base + "/api/status", timeout=2)
-                break
-            except urllib.error.HTTPError:
-                break
-            except Exception:
-                time.sleep(0.25)
+        cls.srv = boot_server(TOKEN, prefix="p3src-srv-", db_name="s.db")
+        cls.tmp = cls.srv["tmp"]
+        cls.base = cls.srv["base"]
 
     @classmethod
     def tearDownClass(cls):
-        if cls.proc is not None:
-            try:
-                os.killpg(os.getpgid(cls.proc.pid), signal.SIGKILL)
-            except OSError:
-                cls.proc.terminate()
-            try:
-                cls.proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                pass
-        import shutil
-        shutil.rmtree(cls.tmp, ignore_errors=True)
+        stop_server(cls.srv)
 
     def test_the_api_does_not_rewrite_the_execution_flag(self):
         """A second write of this field is a second source of truth.
