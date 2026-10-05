@@ -109,6 +109,40 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at TEXT NOT NULL,
   UNIQUE (environment, canonical_root)
 );
+CREATE TABLE IF NOT EXISTS workflow_templates (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  inputs_schema TEXT NOT NULL DEFAULT '{}',
+  default_executor TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS workflow_nodes (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  depends_on TEXT NOT NULL DEFAULT '[]',
+  seq INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS workflow_executions (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  mission_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  inputs TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS graphics (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  config TEXT NOT NULL DEFAULT '{}',
+  state TEXT NOT NULL DEFAULT 'active',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 """
 
 # Migrations applied in order when an existing DB has an older schema_version.
@@ -289,6 +323,13 @@ class Store:
                 "SELECT * FROM tools WHERE id=?", (tool_id,)
             ).fetchone()
             return self._row_to_tool(row) if row else None
+
+    def list_jobs(self) -> list[Job]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM jobs ORDER BY created_at, id"
+            ).fetchall()
+            return [self._row_to_job(r) for r in rows]
 
     def list_tools(self) -> list[Tool]:
         with self._lock:
@@ -499,6 +540,24 @@ class Store:
                 return cur.rowcount > 0
 
     @staticmethod
+    def _row_to_job(row: sqlite3.Row) -> Job:
+        return Job(
+            id=row["id"],
+            mission_id=row["mission_id"],
+            title=row["title"],
+            proposed_by=Principal(row["proposed_by"]),
+            executor=row["executor"],
+            workspace_paths=tuple(json.loads(row["workspace_paths"])),
+            actions=tuple(json.loads(row["actions"])),
+            state=JobState(row["state"]),
+            attempt_no=row["attempt_no"],
+            manifest_hash=row["manifest_hash"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            command=row["command"],
+        )
+
+    @staticmethod
     def _row_to_approval(row: Optional[sqlite3.Row]) -> Optional[Approval]:
         if row is None:
             return None
@@ -666,6 +725,166 @@ class Store:
                 )
             return cur.rowcount > 0
 
+    # -- workflow templates ----------------------------------------------
+
+    def create_workflow_template(
+        self,
+        template_id: str,
+        title: str,
+        description: str,
+        created_at: str,
+        version: int,
+        inputs_schema: dict,
+        default_executor: str,
+    ) -> dict:
+        with self._lock:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO workflow_templates"
+                    " (id, title, description, created_at, version, inputs_schema, default_executor)"
+                    " VALUES (?,?,?,?,?,?,?)",
+                    (template_id, title, description, created_at, version,
+                     json.dumps(inputs_schema), default_executor),
+                )
+        return self.get_workflow_template(template_id)
+
+    def get_workflow_template(self, template_id: str) -> Optional[dict]:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT * FROM workflow_templates WHERE id=?", (template_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return {
+                "id": row["id"],
+                "title": row["title"],
+                "description": row["description"],
+                "created_at": row["created_at"],
+                "version": row["version"],
+                "inputs_schema": json.loads(row["inputs_schema"]),
+                "default_executor": row["default_executor"],
+            }
+
+    def list_workflow_templates(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM workflow_templates ORDER BY created_at, id"
+            ).fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "title": r["title"],
+                    "description": r["description"],
+                    "created_at": r["created_at"],
+                    "version": r["version"],
+                    "inputs_schema": json.loads(r["inputs_schema"]),
+                    "default_executor": r["default_executor"],
+                }
+                for r in rows
+            ]
+
+    def insert_workflow_node(
+        self,
+        node_id: str,
+        workflow_id: str,
+        action_type: str,
+        metadata: dict,
+        depends_on: list[str],
+        seq: int,
+    ) -> None:
+        with self._lock:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO workflow_nodes"
+                    " (id, workflow_id, action_type, metadata, depends_on, seq)"
+                    " VALUES (?,?,?,?,?,?)",
+                    (node_id, workflow_id, action_type,
+                     json.dumps(metadata), json.dumps(depends_on), seq),
+                )
+
+    def get_workflow_nodes(self, workflow_id: str) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM workflow_nodes WHERE workflow_id=? ORDER BY seq, id",
+                (workflow_id,),
+            ).fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "workflow_id": r["workflow_id"],
+                    "action_type": r["action_type"],
+                    "metadata": json.loads(r["metadata"]),
+                    "depends_on": json.loads(r["depends_on"]),
+                    "seq": r["seq"],
+                }
+                for r in rows
+            ]
+
+    # -- workflow executions ---------------------------------------------
+
+    def create_workflow_execution(
+        self,
+        execution_id: str,
+        workflow_id: str,
+        mission_id: str,
+        status: str,
+        inputs: dict,
+        created_at: str,
+    ) -> dict:
+        with self._lock:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO workflow_executions"
+                    " (id, workflow_id, mission_id, status, inputs, created_at)"
+                    " VALUES (?,?,?,?,?,?)",
+                    (execution_id, workflow_id, mission_id, status,
+                     json.dumps(inputs), created_at),
+                )
+        return self.get_workflow_execution(execution_id)
+
+    def get_workflow_execution(self, execution_id: str) -> Optional[dict]:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT * FROM workflow_executions WHERE id=?", (execution_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return {
+                "id": row["id"],
+                "workflow_id": row["workflow_id"],
+                "mission_id": row["mission_id"],
+                "status": row["status"],
+                "inputs": json.loads(row["inputs"]),
+                "created_at": row["created_at"],
+            }
+
+    def list_workflow_executions(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM workflow_executions ORDER BY created_at, id"
+            ).fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "workflow_id": r["workflow_id"],
+                    "mission_id": r["mission_id"],
+                    "status": r["status"],
+                    "inputs": json.loads(r["inputs"]),
+                    "created_at": r["created_at"],
+                }
+                for r in rows
+            ]
+
+    def update_workflow_execution_status(
+        self, execution_id: str, status: str
+    ) -> None:
+        with self._lock:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE workflow_executions SET status=? WHERE id=?",
+                    (status, execution_id),
+                )
+
     @staticmethod
     def _row_to_project(row: sqlite3.Row) -> Project:
         return Project(
@@ -678,3 +897,86 @@ class Store:
             read_only=bool(row["read_only"]),
             created_at=row["created_at"],
         )
+
+    # -- graphics ----------------------------------------------------------
+
+    def create_graphic(
+        self,
+        graphic_id: str,
+        title: str,
+        kind: str,
+        config: dict,
+        created_at: str,
+        updated_at: str,
+    ) -> dict:
+        with self._lock:
+            with self.conn:
+                self.conn.execute(
+                    "INSERT INTO graphics"
+                    " (id, title, kind, config, state, created_at, updated_at)"
+                    " VALUES (?,?,?,?,?,?,?)",
+                    (graphic_id, title, kind,
+                     json.dumps(config, ensure_ascii=False),
+                     "active", created_at, updated_at),
+                )
+        return self.get_graphic(graphic_id)
+
+    def get_graphic(self, graphic_id: str) -> Optional[dict]:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT * FROM graphics WHERE id=?", (graphic_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return self._row_to_graphic(row)
+
+    def list_graphics(self, include_deleted: bool = False) -> list[dict]:
+        with self._lock:
+            if include_deleted:
+                rows = self.conn.execute(
+                    "SELECT * FROM graphics ORDER BY created_at, id"
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    "SELECT * FROM graphics WHERE state != 'deleted' "
+                    "ORDER BY created_at, id"
+                ).fetchall()
+            return [self._row_to_graphic(r) for r in rows]
+
+    def update_graphic_config(self, graphic_id: str, config_patch: dict) -> bool:
+        with self._lock:
+            with self.conn:
+                row = self.conn.execute(
+                    "SELECT config FROM graphics WHERE id=?", (graphic_id,)
+                ).fetchone()
+                if row is None:
+                    return False
+                cfg = json.loads(row["config"]) if row["config"] else {}
+                cfg.update(config_patch)
+                now = iso(utc_now())
+                self.conn.execute(
+                    "UPDATE graphics SET config=?, updated_at=? WHERE id=?",
+                    (json.dumps(cfg, ensure_ascii=False), now, graphic_id),
+                )
+            return True
+
+    def delete_graphic(self, graphic_id: str) -> bool:
+        with self._lock:
+            with self.conn:
+                cur = self.conn.execute(
+                    "UPDATE graphics SET state=? WHERE id=? AND state!='deleted'",
+                    ("deleted", graphic_id),
+                )
+                return cur.rowcount > 0
+
+    @staticmethod
+    def _row_to_graphic(row: sqlite3.Row) -> dict:
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "kind": row["kind"],
+            "config": json.loads(row["config"]),
+            "state": row["state"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }

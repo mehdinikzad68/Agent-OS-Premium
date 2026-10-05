@@ -329,6 +329,78 @@ class ConflictError(Exception):
     """Knowledge edit based on a stale revision."""
 
 
+# ---------------------------------------------------------------------------
+# Configurable Workflows (Phase 9)
+# ---------------------------------------------------------------------------
+
+
+class NodeActionType(str, Enum):
+    """The kind of work a workflow node performs."""
+
+    EXECUTE_JOB = "execute_job"
+    HUMAN_APPROVAL = "human_approval"
+    CONDITIONAL_BRANCH = "conditional_branch"
+
+
+class WorkflowNodeState(str, Enum):
+    """Runtime state of a single node within a workflow execution."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+@dataclass
+class WorkflowTemplate:
+    """A declarative, reusable graph of work nodes.
+
+    Templates are immutable: any change creates a new version. Executions
+    snapshot the graph at instantiation time, so a running execution is
+    never affected by a template edit.
+    """
+
+    id: str
+    title: str
+    description: str
+    created_at: str
+    version: int
+    inputs_schema: dict      # JSON Schema for runtime inputs
+    default_executor: str    # e.g. "dsh-headless"
+
+
+@dataclass
+class WorkflowNode:
+    """A single node in a workflow template DAG.
+
+    depends_on lists node IDs that must reach COMPLETED before this node
+    may start. An empty tuple means the node has no prerequisites and can
+    start immediately (parallel root).
+    """
+
+    id: str
+    workflow_id: str
+    action_type: NodeActionType
+    metadata: dict           # command, actions, requires_explicit_human_approval, etc.
+    depends_on: tuple[str, ...]
+
+
+@dataclass
+class WorkflowExecution:
+    """A running (or finished) instance of a WorkflowTemplate.
+
+    Maps 1:1 to a Mission. The execution inputs are the resolved
+    parameter values supplied at instantiation time.
+    """
+
+    id: str
+    workflow_id: str
+    mission_id: str
+    status: str              # active | suspended | completed | failed
+    inputs: dict
+    created_at: str
+
 class DispatchRefused(Exception):
     """Policy denied dispatch BEFORE the executor was invoked."""
 

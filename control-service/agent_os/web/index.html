@@ -6,46 +6,51 @@
 <title>Agent OS — Mission Control</title>
 <style>
   :root {
-    --bg: #0f1419; --panel: #171e26; --panel2: #1d2630; --border: #2a3542;
-    --text: #e6edf3; --muted: #8b98a5; --accent: #4ea1ff; --ok: #2ea043;
-    --warn: #d29922; --bad: #f85149; --info: #a371f7;
+    --bg: #0d1117; --panel: #161b22; --panel2: #21262d; --panel-active: #28303a;
+    --border: #30363d; --border-focus: #58a6ff;
+    --text: #c9d1d9; --text-bright: #f0f6fc; --muted: #8b949e;
+    --accent: #58a6ff; --ok: #238636; --warn: #d29922; --bad: #da3633; --info: #a371f7;
+    --code-bg: #090d13;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; font-family: system-ui, "Segoe UI", Tahoma, sans-serif;
     background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5;
   }
-  header {
+  .top-bar {
     display: flex; align-items: center; gap: 12px; padding: 10px 16px;
     background: var(--panel); border-bottom: 1px solid var(--border);
-    position: sticky; top: 0; z-index: 10;
+    position: sticky; top: 0; z-index: 10; flex-wrap: wrap;
   }
-  header h1 { font-size: 16px; margin: 0; }
-  header .spacer { flex: 1; }
-  input, button, select, textarea {
-    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 6px; padding: 6px 10px; font-size: 13px;
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand h1 { font-size: 16px; margin: 0; }
+  .top-bar-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+  .project-selector { width: 180px; }
+  .executor-chips { display: flex; gap: 6px; }
+  .executor-chip {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    background: var(--panel2); border: 1px solid var(--border); font-size: 11px;
   }
-  button { cursor: pointer; }
-  .langsel { color: var(--muted); font-size: 12px; }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
-  button.ok { background: var(--ok); color: #04120a; border-color: var(--ok); }
-  button.bad { background: var(--bad); color: #1c0605; border-color: var(--bad); }
-  button:disabled { opacity: .4; cursor: not-allowed; }
-  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 14px; padding: 14px 16px; }
-  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .executor-chip.active { border-color: var(--ok); color: var(--ok); }
+  .layout-3col {
+    display: grid; grid-template-columns: 280px 1fr 400px; gap: 14px;
+    padding: 14px 16px; height: calc(100vh - 60px);
+  }
+  @media (max-width: 1200px) { .layout-3col { grid-template-columns: 240px 1fr 340px; } }
+  @media (max-width: 900px) { .layout-3col { grid-template-columns: 1fr; height: auto; } }
+  .pane-left, .pane-center, .pane-right {
+    overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  }
   .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
   .card h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .card h3 { font-size: 12px; margin: 14px 0 8px; color: var(--muted); }
   .list { display: flex; flex-direction: column; gap: 6px; }
   .item { padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
   .item:hover { border-color: var(--accent); }
-  /* .item is now a real <button> so the keyboard can reach it */
-  button.item { text-align: start; width: 100%; font: inherit; color: inherit;
-    display: block; cursor: pointer; }
+  button.item { text-align: start; width: 100%; font: inherit; color: inherit; display: block; cursor: pointer; }
   .item .t { display: block; font-weight: 600; }
   .item .m { display: block; color: var(--muted); font-size: 12px; }
-  /* A keyboard user must be able to see where they are. */
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
   .b-draft { background: #30363d; }
@@ -65,100 +70,115 @@
   .feed .seq { color: var(--muted); }
   .feed .kind { color: var(--accent); }
   .feed .ts { color: var(--muted); float: left; }
-  pre.detail { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--panel2); padding: 10px; border-radius: 6px; }
-  .row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .muted { color: var(--muted); }
-  /* Technical values must stay readable LTR inside the Persian RTL UI. The
-     isolation matters as much as the direction: argv and paths contain "/"
-     and punctuation that a bidi algorithm would otherwise reorder. */
   .tech { direction: ltr; unicode-bidi: isolate; text-align: left;
           font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
           font-size: 12px; word-break: break-all; }
+  pre.detail { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--panel2); padding: 10px; border-radius: 6px; }
+  .row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .muted { color: var(--muted); }
   .pill { display:inline-block; padding: 2px 8px; border-radius: 10px; background: var(--panel2); border:1px solid var(--border); font-size: 12px; }
   #toast { position: fixed; bottom: 16px; left: 16px; background: var(--panel); border:1px solid var(--border); padding: 10px 14px; border-radius: 8px; display:none; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   td, th { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); }
   th { color: var(--muted); }
+  .tab-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+  .tab-btn {
+    background: var(--panel2); border: 1px solid var(--border); border-bottom: none;
+    border-radius: 6px 6px 0 0; padding: 6px 12px; cursor: pointer;
+    font-size: 12px; color: var(--muted); font-family: inherit;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { background: var(--panel); color: var(--text-bright); border-color: var(--accent); }
+  .tab-content { flex: 1; overflow-y: auto; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .approval-card {
+    border: 1px solid var(--warn); border-radius: 8px; padding: 12px;
+    background: var(--panel2); margin-bottom: 8px;
+  }
+  .approval-card .approval-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    color: var(--warn); font-weight: 600; font-size: 13px;
+  }
+  .evidence-panel { padding: 8px 0; }
+  .evidence-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+  .evidence-tab {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 4px 10px; cursor: pointer; font-size: 11px; color: var(--muted);
+    font-family: inherit;
+  }
+  .evidence-tab.active { background: var(--panel-active); color: var(--text-bright); border-color: var(--accent); }
+  .evidence-content { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+  .evidence-content pre {
+    background: var(--code-bg); padding: 8px; border-radius: 4px;
+    overflow-x: auto; direction: ltr; text-align: left; white-space: pre-wrap;
+  }
+  .evidence-metrics { display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .evidence-metric { font-size: 11px; color: var(--muted); }
+  .evidence-metric b { color: var(--text); }
+  .feed-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .feed-filter { width: 120px; }
+  .feed-follow { font-size: 11px; }
+  .diagnostics-tray {
+    position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel);
+    border-top: 1px solid var(--border); z-index: 20; max-height: 200px; overflow: hidden;
+    transition: max-height 0.2s ease;
+  }
+  .diagnostics-tray.collapsed { max-height: 32px; }
+  .tray-header {
+    display: flex; align-items: center; gap: 10px; padding: 6px 16px;
+    font-size: 12px; color: var(--muted); cursor: pointer;
+  }
+  .tray-content { padding: 0 16px 10px; overflow-y: auto; }
+  input, button, select, textarea {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px;
+  }
+  button { cursor: pointer; }
+  .langsel { color: var(--muted); font-size: 12px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
+  button.ok { background: var(--ok); color: #04120a; border-color: var(--ok); }
+  button.bad { background: var(--bad); color: #1c0605; border-color: var(--bad); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>🛰️ Agent OS — Mission Control</h1>
-  <span class="muted" id="conn" data-i18n="conn.connecting"></span>
-  <span class="spacer"></span>
-  <input id="token" type="password" data-i18n-attr="placeholder:auth.tokenPlaceholder" placeholder="" style="width:220px">
-  <button id="btn-connect" class="primary" data-i18n="auth.connect"></button>
-  <label class="langsel" for="lang-select" data-i18n="ui.language"></label>
-  <select id="lang-select" aria-label="Language">
-    <option value="en">English</option>
-    <option value="fa">فارسی</option>
-  </select>
+<header class="top-bar">
+  <div class="brand">
+    <h1>🛰️ Agent OS — Mission Control</h1>
+    <span class="muted" id="conn" data-i18n="conn.connecting"></span>
+  </div>
+  <div class="top-bar-controls">
+    <select id="project-selector" class="project-selector" aria-label="Project">
+      <option value="">—</option>
+    </select>
+    <div class="executor-chips">
+      <span class="executor-chip" id="chip-hermes">Hermes</span>
+      <span class="executor-chip" id="chip-docker">Docker</span>
+      <span class="executor-chip" id="chip-subprocess">Subprocess</span>
+    </div>
+    <span class="spacer"></span>
+    <input id="token" type="password" data-i18n-attr="placeholder:auth.tokenPlaceholder" placeholder="" style="width:220px">
+    <button id="btn-connect" class="primary" data-i18n="auth.connect"></button>
+    <label class="langsel" for="lang-select" data-i18n="ui.language"></label>
+    <select id="lang-select" aria-label="Language">
+      <option value="en">English</option>
+      <option value="fa">فارسی</option>
+    </select>
+  </div>
 </header>
 
-<div class="layout">
-  <aside>
+<div class="layout-3col">
+  <aside class="pane-left">
     <div class="card">
       <h2 data-i18n="sys.status"></h2>
       <div id="status" class="muted">—</div>
     </div>
-    <div class="card" style="margin-top:12px">
-      <h2 data-i18n="mission.new"></h2>
-      <div class="row-inline">
-        <input id="new-mission" data-i18n-attr="placeholder:mission.titlePlaceholder" placeholder="" style="flex:1">
-        <button id="btn-mission" class="primary" data-i18n="mission.create"></button>
-      </div>
-    </div>
-    <div class="card" style="margin-top:12px">
-      <h2 data-i18n="mission.list"></h2>
-      <div id="missions" class="list"></div>
-    </div>
-  </aside>
-
-  <main>
     <div class="card">
-      <h2 data-i18n="mission.detail"></h2>
-      <div id="mission-detail" class="muted" data-i18n="mission.selectOne"></div>
-      <div id="jobs" class="list" style="margin-top:10px"></div>
-    </div>
-
-    <div class="card" id="job-card" style="margin-top:12px; display:none">
-      <h2 data-i18n="job.detail"></h2>
-      <div id="job-detail" class="muted">—</div>
-    </div>
-
-    <div class="card" style="margin-top:12px">
-      <h2 data-i18n="approvals.box"></h2>
-      <div id="approvals" class="list"></div>
-    </div>
-
-    <div class="card" style="margin-top:12px">
-      <h2 data-i18n="feed.title"></h2>
-      <div id="feed" class="feed">—</div>
-    </div>
-
-    <div class="card" style="margin-top:12px">
-      <h2 data-i18n="ui.observedTimeline"></h2>
-      <!-- The distinction this panel exists to make visible: these events
-           were recorded by another runtime and observed here. Ingest sees
-           what already happened; it cannot have stopped anything. Stated on
-           the page, not only in a log. -->
-      <div class="muted" data-i18n="ui.observedSafety"></div>
-      <div class="row-inline" style="margin-top:8px">
-        <button class="ok" id="obs-ingest" type="button" data-i18n="ui.observedIngest"></button>
-        <span class="muted" id="obs-msg"></span>
-      </div>
-      <div class="muted" id="obs-state" style="margin-top:8px"></div>
-      <div id="obs-list" class="list"></div>
-    </div>
-
-    <div class="card" style="margin-top:12px">
-      <h2 data-i18n="diag.title"></h2>
-      <div class="muted" data-i18n="diag.hint"></div>
-      <pre id="diag" class="feed" style="margin-top:8px">—</pre>
-      <button id="diag-clear" type="button" data-i18n="diag.clear"></button>
-    </div>
-
-    <div class="card" style="margin-top:12px">
       <h2 data-i18n="ui.projects"></h2>
       <form id="proj-form">
         <div class="row-inline">
@@ -174,11 +194,17 @@
       <div id="proj-list" class="list"></div>
       <p id="proj-msg" class="muted"></p>
     </div>
-
-    <div class="card" style="margin-top:12px">
+    <div class="card">
+      <h2 data-i18n="mission.new"></h2>
+      <div class="row-inline">
+        <input id="new-mission" data-i18n-attr="placeholder:mission.titlePlaceholder" placeholder="" style="flex:1">
+        <button id="btn-mission" class="primary" data-i18n="mission.create"></button>
+      </div>
+      <h3 data-i18n="mission.list" style="margin-top:12px"></h3>
+      <div id="missions" class="list"></div>
+    </div>
+    <div class="card">
       <h2 data-i18n="ui.tools"></h2>
-      <!-- The distinction this panel exists to make visible: a discovered tool
-           is a fact, not a permission. Stated on the page, not only in a log. -->
       <div class="muted" data-i18n="ui.toolsSafety"></div>
       <div class="row-inline" style="margin-top:8px">
         <button class="ok" id="tool-discover" type="button" data-i18n="ui.toolsDiscover"></button>
@@ -188,18 +214,144 @@
       <h3 data-i18n="ui.toolsRegistry" style="margin-top:14px"></h3>
       <div id="tool-list" class="list"></div>
     </div>
+  </aside>
+
+  <main class="pane-center">
+    <div class="card">
+      <h2 data-i18n="mission.detail"></h2>
+      <div id="mission-detail" class="muted" data-i18n="mission.selectOne"></div>
+      <div id="jobs" class="list" style="margin-top:10px"></div>
+    </div>
+    <div class="card" id="job-card" style="display:none">
+      <h2 data-i18n="job.detail"></h2>
+      <div id="job-detail" class="muted">—</div>
+    </div>
   </main>
+
+  <aside class="pane-right">
+    <div class="tab-bar" role="tablist">
+      <button class="tab-btn active" data-tab="approvals" id="tab-approvals" data-i18n="approvals.box"></button>
+      <button class="tab-btn" data-tab="evidence" id="tab-evidence" data-i18n="job.evidence"></button>
+      <button class="tab-btn" data-tab="feed" id="tab-feed" data-i18n="feed.title"></button>
+      <button class="tab-btn" data-tab="observed" id="tab-observed" data-i18n="ui.observedTimeline"></button>
+      <button class="tab-btn" data-tab="workflows" id="tab-workflows" data-i18n="ui.workflows"></button>
+      <button class="tab-btn" data-tab="graphics" id="tab-graphics" data-i18n="graphics.title"></button>
+</div>
+    <div class="tab-content">
+      <div class="tab-panel active" id="panel-approvals">
+        <div id="approvals" class="list"></div>
+      </div>
+      <div class="tab-panel" id="panel-evidence">
+        <div id="evidence-panel"></div>
+      </div>
+      <div class="tab-panel" id="panel-feed">
+        <div class="feed-controls">
+          <select id="feed-filter" class="feed-filter" aria-label="Filter">
+            <option value="all">All</option>
+            <option value="info">Info</option>
+            <option value="warn">Warning</option>
+            <option value="error">Error</option>
+            <option value="security">Security</option>
+          </select>
+          <button id="feed-follow" class="feed-follow" type="button">Follow Live</button>
+        </div>
+        <div id="feed" class="feed">—</div>
+      </div>
+      <div class="tab-panel" id="panel-observed">
+        <div class="muted" data-i18n="ui.observedSafety"></div>
+        <div class="row-inline" style="margin-top:8px">
+          <button class="ok" id="obs-ingest" type="button" data-i18n="ui.observedIngest"></button>
+          <span class="muted" id="obs-msg"></span>
+        </div>
+        <div class="muted" id="obs-state" style="margin-top:8px"></div>
+        <div id="obs-list" class="list"></div>
+      </div>
+      <div class="tab-panel" id="panel-workflows">
+        <div class="card">
+          <h2 data-i18n="wf.create"></h2>
+          <div class="row-inline" style="margin-bottom:8px">
+            <input id="wf-title" data-i18n-attr="placeholder:wf.titlePlaceholder" placeholder="" style="flex:1">
+          </div>
+          <div class="row-inline" style="margin-bottom:8px">
+            <input id="wf-desc" data-i18n-attr="placeholder:wf.descPlaceholder" placeholder="" style="flex:1">
+          </div>
+          <div class="row-inline" style="margin-bottom:8px">
+            <input id="wf-executor" data-i18n-attr="placeholder:wf.executorPlaceholder" placeholder="" style="flex:1">
+          </div>
+          <div class="row-inline" style="margin-bottom:8px">
+            <textarea id="wf-nodes" data-i18n-attr="placeholder:wf.nodesPlaceholder" placeholder="" style="flex:1;min-height:120px;font-family:monospace;font-size:12px"></textarea>
+          </div>
+          <button class="primary" id="wf-create" type="button" data-i18n="wf.createBtn"></button>
+          <span class="muted" id="wf-msg" style="margin-left:8px"></span>
+        </div>
+        <div class="card">
+          <h2 data-i18n="wf.list"></h2>
+          <div id="wf-list" class="list"></div>
+        </div>
+        <div class="card" id="wf-run-card" style="display:none">
+          <h2 data-i18n="wf.run"></h2>
+          <div id="wf-run-info" class="muted" style="margin-bottom:8px"></div>
+          <div class="row-inline" style="margin-bottom:8px">
+            <textarea id="wf-run-inputs" data-i18n-attr="placeholder:wf.inputsPlaceholder" placeholder="" style="flex:1;min-height:80px;font-family:monospace;font-size:12px"></textarea>
+          </div>
+          <button class="ok" id="wf-run" type="button" data-i18n="wf.runBtn"></button>
+          <span class="muted" id="wf-run-msg" style="margin-left:8px"></span>
+        </div>
+        <div class="card" id="wf-exec-card" style="display:none">
+          <h2 data-i18n="wf.execution"></h2>
+          <div id="wf-exec-detail" class="muted"></div>
+        </div>
+      </div>
+      <div class="tab-panel" id="panel-graphics">
+        <div class="card">
+          <h2 data-i18n="graphics.create"></h2>
+          <div class="row-inline" style="margin-bottom:8px">
+            <input id="gfx-title" placeholder="" style="flex:1" data-i18n-attr="placeholder:graphics.titlePlaceholder">
+          </div>
+          <div class="row-inline" style="margin-bottom:8px">
+            <select id="gfx-kind" style="flex:1">
+              <option value="shape_2d">2D Shape</option>
+              <option value="shape_3d" selected>3D Shape</option>
+              <option value="chart">Chart</option>
+              <option value="diagram">Diagram</option>
+            </select>
+          </div>
+          <div class="row-inline" style="margin-bottom:8px">
+            <textarea id="gfx-config" placeholder="" style="flex:1;min-height:120px;font-family:monospace;font-size:12px" data-i18n-attr="placeholder:graphics.configPlaceholder"></textarea>
+          </div>
+          <button class="primary" id="gfx-create" type="button" data-i18n="graphics.createBtn"></button>
+          <span class="muted" id="gfx-msg" style="margin-left:8px"></span>
+        </div>
+        <div class="card">
+          <h2 data-i18n="graphics.list"></h2>
+          <div id="gfx-list" class="list"></div>
+        </div>
+        <div class="card" id="gfx-preview" style="display:none">
+          <h2 data-i18n="graphics.preview"></h2>
+          <div id="gfx-svg"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div class="diagnostics-tray" id="diagnostics-tray">
+  <div class="tray-header" id="tray-header">
+    <span data-i18n="diag.title"></span>
+    <span class="spacer"></span>
+    <button id="tray-toggle" type="button" data-i18n="diag.clear"></button>
+  </div>
+  <div class="tray-content" id="tray-content">
+    <div class="muted" data-i18n="diag.hint"></div>
+    <pre id="diag" class="feed" style="margin-top:8px">—</pre>
+    <button id="diag-clear" type="button" data-i18n="diag.clear"></button>
+  </div>
 </div>
 
 <div id="toast"></div>
 
 <script>
 "use strict";
-// ==== i18n scaffold (Phase 1, step 2a) ====
-// English is the product default; Persian is selectable. Step 2a only builds
-// the skeleton: the existing hard-coded Persian strings are NOT yet migrated,
-// so the visible UI is unchanged by this step. Keys below are the 10 anchors
-// the later migration steps will fill in.
 const I18N = {
   en: {
     "app.title": "Agent OS — Mission Control",
@@ -239,6 +391,32 @@ const I18N = {
     "ui.toolsSkipped": "Not probed",
     "ui.toolsSkippedHint": "On disk but not executed: these names are not on the probe allowlist.",
     "ui.toolsNoExec": "grants no execution",
+    "ui.workflows": "Workflows",
+    "wf.create": "Create Workflow Template",
+    "wf.titlePlaceholder": "Workflow title",
+    "wf.descPlaceholder": "Description (optional)",
+    "wf.executorPlaceholder": "Default executor (e.g. subprocess-executor)",
+    "wf.nodesPlaceholder": "Nodes JSON: [{\"id\":\"step1\",\"action_type\":\"execute_job\",\"metadata\":{\"command\":[\"echo\",\"hello\"]},\"depends_on\":[]}]",
+    "wf.createBtn": "Create Template",
+    "wf.list": "Workflow Templates",
+    "wf.run": "Run Workflow",
+    "wf.inputsPlaceholder": "Runtime inputs as JSON: {\"target_path\":\"/home/mehdi/workspace\"}",
+    "wf.runBtn": "Execute",
+    "wf.execution": "Execution Status",
+    "wf.created": "Workflow template created",
+    "wf.createFailed": "Failed to create workflow",
+    "wf.executed": "Workflow execution started",
+    "wf.executeFailed": "Failed to execute workflow",
+    "wf.noTemplates": "No workflow templates yet. Create one above.",
+    "wf.nodesInvalid": "Invalid nodes JSON",
+    "wf.inputsInvalid": "Invalid inputs JSON",
+            "graphics.title": "Graphics",
+            "graphics.create": "Create Graphic",
+            "graphics.createBtn": "Create",
+            "graphics.titlePlaceholder": "Title",
+            "graphics.configPlaceholder": "Config JSON",
+            "graphics.list": "Graphics List",
+            "graphics.preview": "Preview",
     "ui.noProjects": "No project registered yet",
     "ui.name": "Name",
     "ui.root": "Folder",
@@ -261,7 +439,7 @@ const I18N = {
     "job.requestApproval": "Request approval",
     "job.dispatch": "Dispatch job",
     "job.reconcile": "Reconcile manually",
-    "job.awaitingHuman": "Waiting for a human decision \u2014 approve or reject it in Approvals",
+    "job.awaitingHuman": "Waiting for a human decision — approve or reject it in Approvals",
     "job.evidence": "Recorded evidence",
     "job.eventNo": "event",
     "job.reportStatus": "Report status:",
@@ -345,7 +523,7 @@ const I18N = {
     "ui.obsEmpty": "هنوز رویدادی مشاهده نشده. برای خواندن آنچه منبع ثبت کرده، «خواندن فعالیت» را بزنید.",
     "ui.obsNothingNew": "منبع قابل خواندن است و از خواندن قبلی چیز تازه‌ای ندارد.",
     "ui.obsAdded": "{n} رویداد تازه خوانده شد.",
-    "ui.obsNeedToken": "توکنی وارد نشده - چیزی خوانده نشد. توکن را در پنل اتصال وارد کنید و دوباره بخوانید.",
+    "ui.obsNeedToken": "توکنی وارد نشده - چیزی خوانده نشده. توکن را در پنل اتصال وارد کنید و دوباره بخوانید.",
     "ui.obsFailed": "خواندن منبع ممکن نشد",
     "ui.obsNoNotes": "نقصی ثبت نشده",
     "ui.obsUnattributed": "نامشخص",
@@ -430,34 +608,51 @@ const I18N = {
     "diag.title": "تشخیص خطا",
     "diag.hint": "خطاهایی که صفحه گرفت، جدیدترین در انتها. فقط در همین زبانه می‌ماند.",
     "diag.clear": "پاک کردن",
+    "ui.workflows": "گردش‌کارها",
+    "wf.create": "ایجاد قالب گردش‌کار",
+    "wf.titlePlaceholder": "عنوان گردش‌کار",
+    "wf.descPlaceholder": "توضیحات (اختیاری)",
+    "wf.executorPlaceholder": "مجری پیش‌فرض (مثلاً subprocess-executor)",
+    "wf.nodesPlaceholder": "JSON نودها: [{\"id\":\"step1\",\"action_type\":\"execute_job\",\"metadata\":{\"command\":[\"echo\",\"hello\"]},\"depends_on\":[]}]",
+    "wf.createBtn": "ایجاد قالب",
+    "wf.list": "قالب‌های گردش‌کار",
+    "wf.run": "اجرای گردش‌کار",
+    "wf.inputsPlaceholder": "ورودی‌های زمان اجرا به صورت JSON: {\"target_path\":\"/home/mehdi/workspace\"}",
+    "wf.runBtn": "اجرا",
+    "wf.execution": "وضعیت اجرا",
+    "wf.created": "قالب گردش‌کار ایجاد شد",
+    "wf.createFailed": "ایجاد گردش‌کار ناموفق بود",
+    "wf.executed": "اجرای گردش‌کار شروع شد",
+    "wf.executeFailed": "اجرای گردش‌کار ناموفق بود",
+    "wf.noTemplates": "هنوز قالب گردش‌کاری وجود ندارد. یکی ایجاد کنید.",
+    "wf.nodesInvalid": "JSON نودها نامعتبر است",
+    "wf.inputsInvalid": "JSON ورودی‌ها نامعتبر است",
+            "graphics.title": "گرافیک",
+            "graphics.create": "ایجاد گرافیک",
+            "graphics.createBtn": "ایجاد",
+            "graphics.titlePlaceholder": "عنوان",
+            "graphics.configPlaceholder": "پیکربندی JSON",
+            "graphics.list": "لیست گرافیک‌ها",
+            "graphics.preview": "پیش‌نمایش",
+
   },
 };
 
-const DEFAULT_LANG = "en"; // product default; Persian is the selectable side
+const DEFAULT_LANG = "en";
 let LANG = DEFAULT_LANG;
 
 function t(key) {
   const table = I18N[LANG] || I18N[DEFAULT_LANG];
   if (Object.prototype.hasOwnProperty.call(table, key)) return table[key];
-  // Fallback chain: current language -> default language -> the key itself.
   const fallback = I18N[DEFAULT_LANG];
   if (Object.prototype.hasOwnProperty.call(fallback, key)) return fallback[key];
   return key;
 }
 
-// Set once the first successful refresh has put data on screen. Until then
-// a language switch has nothing to re-render and must not make a request.
 let DATA_ON_SCREEN = false;
 
-// Sets the document language and writing direction for the active language.
-// Persian is RTL; English is LTR. Technical blocks (feed/diff/code) keep their
-// own LTR direction via CSS and are intentionally not affected here.
-/* Fills every [data-i18n] text node and every [data-i18n-attr] attribute from
-   the active catalog, so a language switch re-renders the static markup
-   without a page reload. */
 function applyI18n(root) {
   const scope = root || document;
-  // The <title> element cannot carry data-i18n, so drive it from the catalog.
   document.title = t("app.title");
   scope.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n");
@@ -475,16 +670,8 @@ function applyI18n(root) {
   });
 }
 
-// localStorage throws in private mode and on a blocked-cookie profile, and
-// a hand-edited value can be anything. One guarded accessor, so no read at
-// module scope can take the page down before it can render anything, and a
-// bad value falls back instead of breaking boot.
 const LANG_STORE_KEY = "agent_os_lang";
 const TOKEN_STORE_KEY = "agent_os_token";
-// The observed-events source and the resume point. The source is a path on
-// the Windows host, because that is where the Hermes profile lives; the
-// service reads it read-only. Shown in the UI so the operator can see
-// what is being observed rather than trusting an invisible default.
 const OBS_SOURCE = "C:/Users/Mehdi/AppData/Local/hermes/profiles/"
   + "my-personal-assistant/state.db";
 let OBS_CURSOR = 0;
@@ -501,9 +688,6 @@ function loadLang() {
 }
 function persistLang(lang) { writeStore(LANG_STORE_KEY, lang); }
 
-// The selector is the only way a user changes the language, so it must
-// never disagree with LANG - including on boot, when setLang runs from the
-// stored value before this listener exists.
 function syncLangSelect() {
   const el = $("lang-select");
   if (el && el.value !== LANG) el.value = LANG;
@@ -516,12 +700,7 @@ function setLang(lang) {
   persistLang(LANG);
   syncLangSelect();
   if (typeof applyI18n === "function") applyI18n();
-  // Placeholders and the submit button carry no data-i18n, so applyI18n
-  // cannot reach them; they are labelled by hand on every language change.
   if (typeof _labelProjectForm === "function") _labelProjectForm();
-  // applyI18n only reaches [data-i18n] hooks. Every runtime panel is built
-  // with innerHTML from JS, so those keep the previous language until the
-  // data is re-rendered from the server.
   if (DATA_ON_SCREEN && typeof refresh === "function") {
     try { refresh(); } catch (e) { /* refresh reports its own failures */ }
   }
@@ -531,13 +710,7 @@ function setLang(lang) {
 function localeFor() {
   return LANG === "fa" ? "fa-IR" : "en-US";
 }
-// ==== end i18n scaffold ====
 
-// ==== client-side diagnostics ====
-// Errors that the page swallowed used to leave no trace at all: a failed
-// refresh produced a silently empty screen. Every caught error now lands in
-// one in-memory ring buffer and is rendered in the diagnostics panel. The
-// buffer never leaves the browser: no network call, no secret in the DOM.
 const UI_LOG_CAP = 200;
 const UI_LOG = [];
 let UI_LOG_DIRTY = false;
@@ -558,7 +731,6 @@ function uiLog(level, message, fields) {
   UI_LOG.push(entry);
   while (UI_LOG.length > UI_LOG_CAP) UI_LOG.shift();
   UI_LOG_DIRTY = true;
-  // Also to the browser console, so devtools shows it without opening the panel.
   const line = `${entry.at} ${entry.level.toUpperCase()} ${entry.message}`;
   if (entry.level === "error") console.error(line, fields || "");
   else console.warn(line, fields || "");
@@ -566,8 +738,6 @@ function uiLog(level, message, fields) {
   if (el) el.textContent = UI_LOG.length
     ? UI_LOG.map((r) => `${r.at} ${r.level.toUpperCase().padEnd(5)} ${r.message}`
         + (r.detail ? `  (${r.detail})` : "")
-        // status was captured all along and never shown, so a warning could
-        // not be traced to the request that caused it. Name the path too.
         + (r.path ? `  [${r.status ?? "?"} ${r.path}]` : "")).join("\n")
     : "—";
 }
@@ -578,7 +748,6 @@ function uiLogClear() {
   const el = $("diag");
   if (el) el.textContent = "—";
 }
-// ==== end client-side diagnostics ====
 
 const $ = (id) => document.getElementById(id);
 let TOKEN = readStore(TOKEN_STORE_KEY) || "";
@@ -602,8 +771,6 @@ async function api(method, path, body) {
   });
   if (!resp.ok) {
     const err = data.error || {};
-    // reason is the server's own reason code. message may be prose that the
-    // browser must never parse to decide what to translate.
     const e = new Error(err.message || ("HTTP " + resp.status));
     e.reason = err.reason || "";
     throw e;
@@ -793,7 +960,6 @@ async function propose(missionId, title, executor, actions) {
       workspace_paths: ["workspace/"], actions,
       proposed_by: "planner",
     });
-    // auto-request approval
     const a = await api("POST", "/api/approvals", { job_id: j.id });
     toast(t("toast.jobProposed"));
     refresh();
@@ -808,23 +974,17 @@ async function loadApprovals() {
   if (pending.length === 0) { el.innerHTML = `<div class="muted">${t("approvals.none")}</div>`; return; }
   pending.forEach((a) => {
     const div = document.createElement("div");
-    div.className = "item";
-    // The command is what the grant actually authorizes, so it has to be on
-    // the card the human reads before clicking Approve. Before this, the card
-    // named only the executor and the actions, and approving was a decision
-    // made blind - which is the whole point of F1. Rendered LTR and escaped.
-    //
-    // Escaped HERE rather than only at the interpolation: the repo's
+    div.className = "approval-card";
+    const cmd = Array.isArray(a.scope.command) ? a.scope.command : null;
+    const cmdHtml = cmd
+      ? `<div class="m tech" style="margin-top:4px">${escapeHtml(cmd.join(" "))}</div>`
+      : "";
     // test_every_user_supplied_interpolation_is_escaped scans for ${expr}
     // inside innerHTML and cannot see that a variable was escaped earlier, so
     // a raw ${cmdHtml} there reads as an unescaped user value. Escaping at
     // construction is also simply where it belongs. The name matches the
     // existing evidenceHtml convention, which is the allowlist entry for
     // "already-escaped markup held in a variable".
-    const cmd = Array.isArray(a.scope.command) ? a.scope.command : null;
-    const cmdHtml = cmd
-      ? `<div class="m tech" style="margin-top:4px">${escapeHtml(cmd.join(" "))}</div>`
-      : "";
     const cmdSafe = escapeHtml(cmdHtml);
     div.innerHTML = `<div class="t">${t("approvals.forJob")} <span class="muted">${escapeHtml(a.job_id)}</span></div>
       <div class="m">scope: ${escapeHtml(a.scope.executor)} · ${escapeHtml((a.scope.actions||[]).join(", "))}</div>
@@ -893,11 +1053,7 @@ async function loadProjects() {
   });
 }
 
-// --- tools (Phase 3) -------------------------------------------------
-// Two lists, kept apart on purpose: what discovery FOUND, and what the owner
-// has REGISTERED. Merging them would imply a registered tool is somehow more
-// runnable, which is exactly the claim this phase must not make.
-function _toolConfidenceBadgeHtml(tool) {   // pre-escaped HTML
+function _toolConfidenceBadgeHtml(tool) {
   if (tool.confidence === "exact") return "";
   if (tool.confidence === "unknown") {
     return ` · ${escapeHtml(t("ui.toolsVersionUnknown"))}`;
@@ -905,10 +1061,7 @@ function _toolConfidenceBadgeHtml(tool) {   // pre-escaped HTML
   return "";
 }
 
-function _toolProvenanceNoteHtml(tool) {  // pre-escaped HTML
-  // A version read from a Windows install reached through WSL is not the same
-  // fact as one read from a POSIX binary, and the page must not let a reader
-  // assume it is.
+function _toolProvenanceNoteHtml(tool) {
   if (tool.provenance !== "windows_mount") return "";
   return ` · <span class="muted">windows_mount</span>`;
 }
@@ -1027,9 +1180,6 @@ async function runDiscovery() {
   const msg = $("tool-msg");
   btn.disabled = true;
   msg.textContent = "";
-  // Same guard refresh() has. Without it this issues a real unauthenticated
-  // request and reports a generic failure, which reads as a broken panel
-  // rather than a missing token.
   if (!TOKEN) {
     msg.textContent = t("ui.toolsNeedToken");
     btn.disabled = false;
@@ -1078,7 +1228,6 @@ $("proj-form").addEventListener("submit", async (ev) => {
 });
 
 async function decide(approvalId, decision) {
-
   try {
     await api("POST", "/api/approvals/" + approvalId + "/decide", { decision });
     toast(decision === "granted" ? t("toast.approved") : t("toast.denied"));
@@ -1086,15 +1235,8 @@ async function decide(approvalId, decision) {
   } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
-// -- observed external events (Phase 4) -----------------------------------
-// Everything interpolated below is escaped at construction and the variables
-// are named *Safe, because a variable that merely LOOKS escaped once satisfied
-// the security scanner and then leaked on the next edit.
-
 const OBS_UNKNOWN = "unknown";
 
-// A source field is technical text: it stays LTR and monospace inside the RTL
-// page, or a path with slashes renders backwards and becomes unreadable.
 function obsTextSafe(v) {
   if (v === null || v === undefined) return OBS_UNKNOWN;
   const s = String(v).trim();
@@ -1113,9 +1255,6 @@ function obsTimeSafe(ts, locale) {
 function obsRenderState(state, locale) {
   const el = $("obs-state");
   if (!el) return;
-  // Three outcomes, never collapsed into one. "Cannot see" and "nothing new"
-  // look identical if the panel only ever says "empty", and that difference is
-  // the whole point of an honest timeline.
   if (state === "unavailable") {
     el.textContent = t("ui.obsUnavailable");
     el.style.color = "var(--bad)";
@@ -1177,10 +1316,6 @@ async function obsRender() {
     const p = e.payload || {};
     const div = document.createElement("div");
     div.className = "row";
-    // Every value below is escaped at construction, and every variable that
-    // reaches innerHTML is named *Safe. The scanner in tests/test_ui_i18n.py
-    // enforces that naming, which is the point: a variable that only looks
-    // escaped is how the last leak happened.
     const timeSafe = escapeHtml(obsTimeSafe(p.source_timestamp, locale));
     const toolSafe = escapeHtml(obsTextSafe(p.tool_name));
     const srcSafe = escapeHtml(obsTextSafe(p.source));
@@ -1188,9 +1323,6 @@ async function obsRender() {
     const notes = Array.isArray(p.notes) ? p.notes : [];
     const noteSafe = escapeHtml(notes.join(" · ") || t("ui.obsNoNotes"));
     const toolNameSafe = obsTextSafe(p.tool_name);
-    // An event that could not be attributed is marked, never smoothed over.
-    // The badge is markup of our own plus one escaped catalog string, so the
-    // whole fragment is built and escaped before it is interpolated.
     const badgeLabelSafe = escapeHtml(t("ui.obsUnattributed"));
     const badgeMarkupSafe = toolNameSafe === OBS_UNKNOWN
       ? `<span class="badge b-failed">${badgeLabelSafe}</span> `
@@ -1235,7 +1367,6 @@ async function refresh() {
         uiLog("error", "job detail re-render failed", { detail: _errText(e) }));
     }
   } catch (e) {
-    // Was `/* auth or transient *\/`: a failed refresh left no trace.
     uiLog("error", "refresh failed", { detail: _errText(e) });
   }
 }
@@ -1245,8 +1376,6 @@ window.requestApproval = requestApproval;
 window.dispatchJob = dispatchJob;
 window.reconcileJob = reconcileJob;
 
-// loadLang() owns the storage key, validates the stored value and survives a
-// disabled localStorage, so boot needs no guard of its own.
 setLang(loadLang());
 applyI18n();
 if (typeof _labelProjectForm === "function") _labelProjectForm();
@@ -1263,16 +1392,224 @@ $("btn-mission").onclick = async () => {
   catch (e) { toast(t("err.prefix") + e.message); }
 };
 
+// Tab switching
+function switchTab(tabName) {
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll(".tab-panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === "panel-" + tabName);
+  });
+}
+
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+});
+
+// Feed filter
+$("feed-filter").addEventListener("change", (e) => {
+  const level = e.target.value;
+  const feed = $("feed");
+  if (level === "all") {
+    feed.querySelectorAll(".row").forEach((row) => { row.style.display = ""; });
+  } else {
+    feed.querySelectorAll(".row").forEach((row) => {
+      const kind = row.querySelector(".kind");
+      const text = kind ? kind.textContent : "";
+      const match = level === "info" && text.includes("INFO") ||
+                    level === "warn" && text.includes("WARN") ||
+                    level === "error" && text.includes("ERROR") ||
+                    level === "security" && text.includes("APPROVAL");
+      row.style.display = match ? "" : "none";
+    });
+  }
+});
+
+// Feed follow toggle
+let feedFollow = true;
+$("feed-follow").addEventListener("click", () => {
+  feedFollow = !feedFollow;
+  $("feed-follow").textContent = feedFollow ? "Follow Live" : "Paused";
+  if (feedFollow) {
+    const feed = $("feed");
+    feed.scrollTop = feed.scrollHeight;
+  }
+});
+
+// Diagnostics tray toggle
+$("tray-header").addEventListener("click", () => {
+  const tray = $("diagnostics-tray");
+  tray.classList.toggle("collapsed");
+});
+
+// Keyboard shortcuts
+document.addEventListener("keydown", (e) => {
+  if (e.altKey && e.key >= "1" && e.key <= "4") {
+    const tabs = ["approvals", "evidence", "feed", "observed"];
+    const idx = parseInt(e.key) - 1;
+    if (idx < tabs.length) switchTab(tabs[idx]);
+  }
+  if (e.key === "a" || e.key === "A") {
+    const activePanel = document.querySelector(".tab-panel.active");
+    if (activePanel && activePanel.id === "panel-approvals") {
+      const grantBtn = activePanel.querySelector(".ok");
+      if (grantBtn) grantBtn.click();
+    }
+  }
+  if (e.key === "r" || e.key === "R") {
+    const activePanel = document.querySelector(".tab-panel.active");
+    if (activePanel && activePanel.id === "panel-approvals") {
+      const rejectBtn = activePanel.querySelector(".bad");
+      if (rejectBtn) rejectBtn.click();
+    }
+  }
+});
+
+// Workflows
+let wfSelectedTemplate = null;
+
+async function loadWorkflows() {
+  try {
+    const res = await api("GET", "/api/workflows");
+    const list = $("wf-list");
+    if (!res.workflows || res.workflows.length === 0) {
+      list.innerHTML = '<div class="muted">' + t("wf.noTemplates") + '</div>';
+      return;
+    }
+    list.innerHTML = res.workflows.map(wf => {
+      const nodeCount = wf.nodes ? wf.nodes.length : 0;
+      return '<div class="item" data-wf-id="' + wf.id + '">' +
+        '<span class="t">' + escapeHtml(wf.title) + '</span>' +
+        '<span class="m">v' + wf.version + ' | ' + nodeCount + ' nodes | ' + escapeHtml(wf.default_executor) + '</span>' +
+        '<button class="ok" style="margin-top:4px" onclick="wfRun(\'' + wf.id + '\')">' + t("wf.runBtn") + '</button>' +
+        '</div>';
+    }).join("");
+  } catch (e) { /* silent */ }
+}
+
+function wfRun(templateId) {
+  wfSelectedTemplate = templateId;
+  $("wf-run-card").style.display = "";
+  $("wf-run-msg").textContent = "";
+  $("wf-run-inputs").value = "{}";
+  $("wf-run-card").scrollIntoView({ behavior: "smooth" });
+}
+
+$("wf-create").addEventListener("click", async () => {
+  const title = $("wf-title").value.trim();
+  const desc = $("wf-desc").value.trim();
+  const executor = $("wf-executor").value.trim();
+  const nodesRaw = $("wf-nodes").value.trim();
+  if (!title) { $("wf-msg").textContent = "Title required"; return; }
+  if (!nodesRaw) { $("wf-msg").textContent = "Nodes JSON required"; return; }
+  let nodes;
+  try { nodes = JSON.parse(nodesRaw); }
+  catch (e) { $("wf-msg").textContent = t("wf.nodesInvalid"); return; }
+  try {
+    await api("POST", "/api/workflows", {
+      title, description: desc, default_executor: executor,
+      inputs_schema: {}, nodes
+    });
+    $("wf-msg").textContent = t("wf.created");
+    $("wf-title").value = ""; $("wf-desc").value = "";
+    $("wf-executor").value = ""; $("wf-nodes").value = "";
+    loadWorkflows();
+  } catch (e) { $("wf-msg").textContent = t("wf.createFailed") + ": " + e.message; }
+});
+
+$("wf-run").addEventListener("click", async () => {
+  if (!wfSelectedTemplate) return;
+  const inputsRaw = $("wf-run-inputs").value.trim();
+  let inputs;
+  try { inputs = JSON.parse(inputsRaw || "{}"); }
+  catch (e) { $("wf-run-msg").textContent = t("wf.inputsInvalid"); return; }
+  try {
+    const res = await api("POST", "/api/workflows/" + wfSelectedTemplate + "/execute", { inputs });
+    $("wf-run-msg").textContent = t("wf.executed") + " (execution: " + res.id + ")";
+    $("wf-exec-card").style.display = "";
+    $("wf-exec-detail").textContent = JSON.stringify(res, null, 2);
+    loadWorkflows();
+  } catch (e) { $("wf-run-msg").textContent = t("wf.executeFailed") + ": " + e.message; }
+});
+
+// Simple Graphics
+let gfxSelected = null;
+
+async function loadGraphics() {
+  try {
+    const res = await api("GET", "/api/graphics");
+    const list = $("gfx-list");
+    if (!res.graphics || res.graphics.length === 0) {
+      list.innerHTML = '<div class="muted">No graphics yet</div>';
+      return;
+    }
+    list.innerHTML = res.graphics.map(g => {
+      const hint = g.config && g.config.shape ? escapeHtml(g.config.shape) : "";
+      const delBtn = g.state === "deleted"
+        ? ""
+        : '<button class="bad" style="margin-top:4px" onclick="gfxDelete(\'' + g.id + '\')">Remove</button>';
+      return '<div class="item" data-gfx-id="' + g.id + '">' +
+        '<span class="t">' + escapeHtml(g.title) + '</span>' +
+        '<span class="m">' + g.kind + (hint ? " | " + hint : "") +
+        ' <span class="badge">' + (g.state || "active") + '</span></span>' +
+        '<button class="ok" style="margin-top:4px" onclick="gfxRender(\'' + g.id + '\')">Render</button>' + delBtn +
+        '</div>';
+    }).join("");
+  } catch (e) { /* silent */ }
+}
+
+async function gfxCreate() {
+  const title = $("gfx-title").value.trim();
+  const kind = $("gfx-kind").value;
+  if (!title) { $("gfx-msg").textContent = "Title required"; return; }
+  let config;
+  try { config = JSON.parse($("gfx-config").value.trim() || "{}"); }
+  catch (e) { $("gfx-msg").textContent = "Config invalid"; return; }
+  try {
+    await api("POST", "/api/graphics", { title, kind, config });
+    $("gfx-msg").textContent = "Created";
+    $("gfx-title").value = ""; $("gfx-config").value = "";
+    loadGraphics();
+  } catch (e) { $("gfx-msg").textContent = "Create failed: " + e.message; }
+}
+
+async function gfxRender(gid) {
+  gfxSelected = gid;
+  try {
+    const res = await api("POST", "/api/graphics/" + gid + "/render");
+    $("gfx-svg").innerHTML = res.svg;
+    $("gfx-preview").style.display = "";
+    $("gfx-preview").scrollIntoView({ behavior: "smooth" });
+  } catch (e) { $("gfx-msg").textContent = "Render failed: " + e.message; }
+}
+
+async function gfxDelete(gid) {
+  try {
+    await api("DELETE", "/api/graphics/" + gid);
+    loadGraphics();
+  } catch (e) { $("gfx-msg").textContent = "Delete failed: " + e.message; }
+}
+
+$("gfx-create").addEventListener("click", gfxCreate);
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
 (async () => {
   if (TOKEN) {
     try {
       await refresh();
+      loadWorkflows();
+      loadGraphics();
     } catch (e) {
       uiLog("error", "initial load failed", { detail: _errText(e) });
     }
   }
   else { $("conn").textContent = t("conn.needToken"); }
-  setInterval(() => { if (TOKEN) refresh(); }, 4000);
+  setInterval(() => { if (TOKEN) { refresh(); loadWorkflows(); loadGraphics(); } }, 4000);
 })();
 </script>
 </body>

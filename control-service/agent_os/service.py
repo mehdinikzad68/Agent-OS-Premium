@@ -50,6 +50,7 @@ from .models import (
     JobState,
     Mission,
     MissionState,
+    NodeActionType,
     Principal,
     Project,
     ProjectRejected,
@@ -57,10 +58,15 @@ from .models import (
     ToolRejected,
     WorkerLostError,
     WorkerOutcome,
+    WorkflowExecution,
+    WorkflowNode,
+    WorkflowNodeState,
+    WorkflowTemplate,
     encode_command,
     iso,
     utc_now,
 )
+from .graphics import Graphic, GraphicKind, GraphicState, render_graphic
 from .policy import validate_dispatch
 from .store import Store, _new_id
 
@@ -794,6 +800,230 @@ class ControlService:
         result = self.store.get_job(job_id)
         assert result is not None
         return result
+
+    # ------------------------------------------------------------------
+    # configurable workflows (Phase 9)
+    # ------------------------------------------------------------------
+
+    def create_workflow_template(
+        self,
+        title: str,
+        description: str,
+        inputs_schema: dict,
+        default_executor: str,
+        nodes: list[dict],
+        now=None,
+    ) -> dict:
+        """Create a workflow template with its node graph.
+
+        Each node dict must have: id, action_type, metadata, depends_on.
+        Returns the template dict with all nodes.
+        """
+        now = now or utc_now()
+        template_id = _new_id("wf")
+        created_at = iso(now)
+        self.store.create_workflow_template(
+            template_id=template_id,
+            title=title,
+            description=description,
+            created_at=created_at,
+            version=1,
+            inputs_schema=inputs_schema,
+            default_executor=default_executor,
+        )
+        for i, node in enumerate(nodes):
+            self.store.insert_workflow_node(
+                node_id=node["id"],
+                workflow_id=template_id,
+                action_type=node["action_type"],
+                metadata=node.get("metadata", {}),
+                depends_on=node.get("depends_on", []),
+                seq=i,
+            )
+        return self.get_workflow_template(template_id)
+
+    def get_workflow_template(self, template_id: str) -> Optional[dict]:
+        template = self.store.get_workflow_template(template_id)
+        if template is None:
+            return None
+        template["nodes"] = self.store.get_workflow_nodes(template_id)
+        return template
+
+    def list_workflow_templates(self) -> list[dict]:
+        return self.store.list_workflow_templates()
+
+    def execute_workflow(
+        self,
+        template_id: str,
+        inputs: dict,
+        now=None,
+    ) -> dict:
+        """Instantiate a workflow template as a running execution.
+
+        Creates a WorkflowExecution + a new Mission, then fans out the
+        root nodes (those with no dependencies) as job proposals.
+        Returns the execution dict.
+        """
+        now = now or utc_now()
+        template = self.store.get_workflow_template(template_id)
+        if template is None:
+            raise KeyError(f"workflow template not found: {template_id!r}")
+
+        # Create the execution and its mission
+        execution_id = _new_id("wfx")
+        mission = self.create_mission(
+            title=f"Workflow: {template['title']}", now=now
+        )
+        self.activate_mission(mission.id)
+        self.store.create_workflow_execution(
+            execution_id=execution_id,
+            workflow_id=template_id,
+            mission_id=mission.id,
+            status="active",
+            inputs=inputs,
+            created_at=iso(now),
+        )
+
+        # Fan out root nodes as job proposals
+        nodes = self.store.get_workflow_nodes(template_id)
+        root_nodes = [n for n in nodes if not n.get("depends_on")]
+        for node in root_nodes:
+            self._propose_node_job(
+                node=node,
+                execution_id=execution_id,
+                mission_id=mission.id,
+                inputs=inputs,
+                default_executor=template["default_executor"],
+                now=now,
+            )
+
+        return self.get_workflow_execution(execution_id)
+
+    def get_workflow_execution(self, execution_id: str) -> Optional[dict]:
+        return self.store.get_workflow_execution(execution_id)
+
+    def list_workflow_executions(self) -> list[dict]:
+        return self.store.list_workflow_executions()
+
+    def _propose_node_job(
+        self,
+        node: dict,
+        execution_id: str,
+        mission_id: str,
+        inputs: dict,
+        default_executor: str,
+        now,
+    ) -> Optional[Job]:
+        """Create a job proposal for a single workflow node.
+
+        Returns None if the node type does not map to a job (e.g.
+        HUMAN_APPROVAL nodes are handled by the approval gate).
+        """
+        action_type = node.get("action_type", NodeActionType.EXECUTE_JOB.value)
+        if action_type == NodeActionType.HUMAN_APPROVAL.value:
+            return None
+        if action_type == NodeActionType.CONDITIONAL_BRANCH.value:
+            return None
+
+        metadata = node.get("metadata", {})
+        executor = metadata.get("executor", default_executor)
+        actions = tuple(metadata.get("actions", ["run_command"]))
+        workspace_paths = tuple(metadata.get("workspace_paths", []))
+        command = metadata.get("command")
+
+        # Resolve {{inputs.xxx}} placeholders in command
+        if command and isinstance(command, list):
+            resolved = []
+            for part in command:
+                if isinstance(part, str) and part.startswith("{{inputs.") and part.endswith("}}"):
+                    key = part[9:-2]
+                    if key in inputs:
+                        resolved.append(str(inputs[key]))
+                    # If key not in inputs, skip this part (don't add empty string)
+                else:
+                    resolved.append(part)
+            command = resolved
+
+        return self.record_proposal(
+            mission_id=mission_id,
+            title=f"[{execution_id[:8]}] {node['id']}",
+            executor=executor,
+            workspace_paths=workspace_paths,
+            actions=actions,
+            proposed_by=Principal.PLANNER,
+            now=now,
+            command=command,
+        )
+
+    # ------------------------------------------------------------------
+    # simple graphics - تکرارهای گرافیکی بکر
+    # ------------------------------------------------------------------
+
+    def create_graphic(self, title: str, kind: str,
+                       config: Optional[dict] = None, now=None) -> dict:
+        # Validate kind is a known member (raises ValueError -> 400 at API).
+        GraphicKind(kind)
+        now = now or utc_now()
+        gid = _new_id("gfx")
+        return self.store.create_graphic(
+            graphic_id=gid,
+            title=title,
+            kind=kind,
+            config=config or {},
+            created_at=iso(now),
+            updated_at=iso(now),
+        )
+
+    def get_graphic(self, graphic_id: str) -> Optional[dict]:
+        return self.store.get_graphic(graphic_id)
+
+    def list_graphics(self, include_deleted: bool = False) -> list[dict]:
+        return self.store.list_graphics(include_deleted=include_deleted)
+
+    def update_graphic(self, graphic_id: str, patch: dict) -> dict:
+        if not self.store.update_graphic_config(graphic_id, patch):
+            raise KeyError(graphic_id)
+        return self.store.get_graphic(graphic_id)
+
+    def delete_graphic(self, graphic_id: str) -> bool:
+        if not self.store.delete_graphic(graphic_id):
+            raise KeyError(graphic_id)
+        return True
+
+    def render_graphic(self, graphic_id: str) -> str:
+        row = self.store.get_graphic(graphic_id)
+        if row is None:
+            raise KeyError(graphic_id)
+        if row["state"] == GraphicState.DELETED.value:
+            raise ValueError("cannot render a deleted graphic")
+        graphic = Graphic(
+            id=row["id"], title=row["title"], kind=row["kind"],
+            config=row["config"], state=row["state"],
+            created_at=row["created_at"], updated_at=row["updated_at"],
+        )
+        return render_graphic(graphic)
+
+    def export_graphic_settings(self, graphic_id: str) -> dict:
+        row = self.store.get_graphic(graphic_id)
+        if row is None:
+            raise KeyError(graphic_id)
+        graphic = Graphic(
+            id=row["id"], title=row["title"], kind=row["kind"],
+            config=row["config"], state=row["state"],
+            created_at=row["created_at"], updated_at=row["updated_at"],
+        )
+        return graphic.export_settings()
+
+    def import_graphic_settings(self, bundle: dict) -> dict:
+        graphic = Graphic.from_export(bundle)
+        return self.store.create_graphic(
+            graphic_id=graphic.id,
+            title=graphic.title,
+            kind=graphic.kind,
+            config=graphic.config,
+            created_at=graphic.created_at,
+            updated_at=graphic.updated_at,
+        )
 
     # ------------------------------------------------------------------
     # knowledge - revisioned, conflict-checked

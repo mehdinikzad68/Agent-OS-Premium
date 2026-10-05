@@ -34,6 +34,7 @@ from .models import (
     JobState,
     Mission,
     MissionState,
+    NodeActionType,
     Principal,
     Project,
     ProjectRejected,
@@ -266,6 +267,24 @@ class AgentOSApi:
             return 200, {"tools": self._tool_publics()}
         if path == "/api/events/external":
             return 200, {"events": self.service.list_external_events()}
+        if path == "/api/workflows":
+            return 200, {"workflows": self.service.list_workflow_templates()}
+        if path.startswith("/api/workflows/"):
+            wf_id = self._segment(p, 2, "workflow")
+            return 200, self.service.get_workflow_template(wf_id)
+        if path == "/api/workflow-executions":
+            return 200, {"executions": self.service.list_workflow_executions()}
+        if path.startswith("/api/workflow-executions/"):
+            ex_id = self._segment(p, 2, "workflow_execution")
+            return 200, self.service.get_workflow_execution(ex_id)
+        if path == "/api/graphics":
+            return 200, {"graphics": self.service.list_graphics()}
+        if path.startswith("/api/graphics/"):
+            g_id = self._segment(p, 2, "graphic")
+            result = self.service.get_graphic(g_id)
+            if result is None:
+                raise ApiError(404, "not_found", f"graphic not found: {g_id}")
+            return 200, result
         raise ApiError(404, "not_found", f"unknown route: {path}")
 
     # -- POST ---------------------------------------------------------------
@@ -307,6 +326,32 @@ class AgentOSApi:
                 cursor=int(body.get("cursor") or 0),
                 limit=int(body.get("limit") or 500),
             )
+        if path == "/api/workflows":
+            return 201, self._create_workflow(body)
+        if path.startswith("/api/workflows/") and path.endswith("/execute"):
+            wf_id = self._segment(path.strip("/").split("/"), 2, "workflow")
+            return 200, self._execute_workflow(wf_id, body)
+        if path == "/api/graphics":
+            title = self._require_str(body, "title")
+            kind = self._require_str(body, "kind")
+            config = body.get("config", {})
+            if not isinstance(config, dict):
+                raise ApiError(400, "bad_request", "config must be an object")
+            return 201, self.service.create_graphic(title=title, kind=kind, config=config)
+        if path == "/api/graphics/import":
+            return 201, self.service.import_graphic_settings(body)
+        if path.startswith("/api/graphics/") and path.endswith("/render"):
+            g_id = self._segment(path.strip("/").split("/"), 2, "graphic")
+            return 200, {"svg": self.service.render_graphic(g_id)}
+        if path.startswith("/api/graphics/") and path.endswith("/export"):
+            g_id = self._segment(path.strip("/").split("/"), 2, "graphic")
+            return 200, self.service.export_graphic_settings(g_id)
+        if path.startswith("/api/graphics/") and path.endswith("/update"):
+            g_id = self._segment(path.strip("/").split("/"), 2, "graphic")
+            patch = body.get("config", {})
+            if not isinstance(patch, dict):
+                raise ApiError(400, "bad_request", "config must be an object")
+            return 200, self.service.update_graphic(g_id, patch)
         raise ApiError(404, "not_found", f"unknown route: {path}")
 
     # -- DELETE ---------------------------------------------------------------
@@ -317,6 +362,10 @@ class AgentOSApi:
             return 200, self._remove_project(self._segment(p, 2, "project"))
         if path.startswith("/api/tools/registry/"):
             return 200, {"removed": self.service.remove_tool(p[3])}
+        if path.startswith("/api/graphics/"):
+            g_id = self._segment(p, 2, "graphic")
+            self.service.delete_graphic(g_id)
+            return 200, {"deleted": g_id}
         raise ApiError(404, "not_found", f"unknown route: {path}")
 
     # -- action implementations -------------------------------------------
@@ -516,6 +565,39 @@ class AgentOSApi:
         note = self._require_str(body, "note")
         return self.service.reconcile(job_id, final_state, Principal.HUMAN, note)
 
+    def _create_workflow(self, body: dict) -> dict:
+        title = self._require_str(body, "title")
+        description = body.get("description", "")
+        inputs_schema = body.get("inputs_schema", {})
+        if not isinstance(inputs_schema, dict):
+            raise ApiError(400, "bad_request", "inputs_schema must be an object")
+        default_executor = body.get("default_executor", "")
+        nodes = body.get("nodes", [])
+        if not isinstance(nodes, list):
+            raise ApiError(400, "bad_request", "nodes must be a list")
+        for i, node in enumerate(nodes):
+            if not isinstance(node, dict):
+                raise ApiError(400, "bad_request", f"nodes[{i}] must be an object")
+            if "id" not in node:
+                raise ApiError(400, "bad_request", f"nodes[{i}].id is required")
+            if "action_type" not in node:
+                raise ApiError(400, "bad_request", f"nodes[{i}].action_type is required")
+            # Validate action_type
+            NodeActionType(node["action_type"])
+        return self.service.create_workflow_template(
+            title=title,
+            description=description,
+            inputs_schema=inputs_schema,
+            default_executor=default_executor,
+            nodes=nodes,
+        )
+
+    def _execute_workflow(self, template_id: str, body: dict) -> dict:
+        inputs = body.get("inputs", {})
+        if not isinstance(inputs, dict):
+            raise ApiError(400, "bad_request", "inputs must be an object")
+        return self.service.execute_workflow(template_id, inputs)
+
     def _remove_project(self, project_id: str) -> dict:
         if not self.service.remove_project(project_id):
             raise ApiError(404, "not_found", "project not found")
@@ -637,6 +719,8 @@ def make_handler(api: AgentOSApi, token: Optional[str]) -> type[BaseHTTPRequestH
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("X-Content-Type-Options", "nosniff")
+            if getattr(self, "close_connection", False):
+                self.send_header("Connection", "close")
             self.end_headers()
             self.wfile.write(data)
 
@@ -682,6 +766,15 @@ def make_handler(api: AgentOSApi, token: Optional[str]) -> type[BaseHTTPRequestH
             # worth having): refuse oversized payloads before parsing.
             if length > Handler.MAX_BODY:
                 self.close_connection = True
+                try:
+                    rem = min(length, Handler.MAX_BODY * 2)
+                    while rem > 0:
+                        c = self.rfile.read(min(rem, 65536))
+                        if not c:
+                            break
+                        rem -= len(c)
+                except Exception:
+                    pass
                 self._send(413, {"error": {"code": "payload_too_large", "message": "request body too large"}})
                 return
             body = None
