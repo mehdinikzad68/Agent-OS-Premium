@@ -16,6 +16,7 @@ import os
 import pathlib
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -23,12 +24,14 @@ import time
 import urllib.error
 import urllib.request
 
-D = pathlib.Path("/home/mehdi/workspace/Agent-OS/control-service")
+D = pathlib.Path(__file__).resolve().parent
 API = D / "agent_os" / "api.py"
 SVC = D / "agent_os" / "service.py"
 WEB = D / "agent_os" / "web" / "index.html"
 TOKEN = "f11-proof"
-PORT = "8874"
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+    _s.bind(("127.0.0.1", 0))  # kernel-chosen (T4): never a fixed port
+    PORT = str(_s.getsockname()[1])
 
 checks = []
 

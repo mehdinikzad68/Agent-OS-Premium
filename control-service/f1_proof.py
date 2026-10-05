@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import socket
 import subprocess
 import sys
 import tempfile
@@ -90,7 +91,9 @@ def main() -> None:
 
     db = tmp / "f1.db"
     token = "f1-proof-token"
-    port = "8793"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+        _s.bind(("127.0.0.1", 0))  # kernel-chosen (T4): never a fixed port
+        port = str(_s.getsockname()[1])
     env = dict(os.environ, AGENT_OS_TOKEN=token)
     proc = subprocess.Popen(
         [sys.executable, "-B", "-m", "agent_os.cli", "serve",

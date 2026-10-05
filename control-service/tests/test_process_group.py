@@ -62,6 +62,15 @@ def _spawner_argv(marker: Path) -> list:
     ]
 
 
+# T2 (review 2026-10-05): POSIX/WSL-only module. Discovery on any other
+# platform must SKIP it honestly instead of reporting errors it cannot
+# meaningfully run (READINESS.md documents WSL as the target environment).
+import sys as _sys
+if not _sys.platform.startswith("linux"):
+    raise unittest.SkipTest(
+        "POSIX/WSL-only module - run the suite under WSL (READINESS.md)"
+    )
+
 class ProcessGroupTestBase(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="f3-test-"))

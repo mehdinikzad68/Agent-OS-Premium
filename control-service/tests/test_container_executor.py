@@ -273,5 +273,88 @@ class ContainerExecutorApprovalTest(unittest.TestCase):
             unregister_executor("container-executor")
 
 
+
+class DisposableCopyMountTest(unittest.TestCase):
+    """H2: the mount source is a disposable copy, never the real source."""
+
+    def setUp(self):
+        import shutil as _shutil
+
+        TMP.mkdir(exist_ok=True)
+        self.src = TMP / "src-h2"
+        if self.src.exists():
+            _shutil.rmtree(self.src)
+        self.src.mkdir(parents=True)
+        (self.src / "marker.txt").write_text("original", encoding="utf-8")
+
+    def tearDown(self):
+        import shutil as _shutil
+
+        if self._retained_copy:
+            _shutil.rmtree(self._retained_copy, ignore_errors=True)
+        if self.src.exists():
+            _shutil.rmtree(self.src, ignore_errors=True)
+
+    _retained_copy = None
+
+    @staticmethod
+    def _mount_source(docker_cmd):
+        value = docker_cmd[docker_cmd.index("--mount") + 1]
+        prefix = "type=bind,source="
+        rest = value[len(prefix):]
+        return rest[: rest.index(",target=/workspace")]
+
+    def test_mount_source_is_a_disposable_copy_not_the_real_source(self):
+        from pathlib import Path as _Path
+
+        job = _make_job(command=["python", "-c", "print('hi')"])
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=b"hi\n", stderr=b"")
+            executor = ContainerExecutor(source_workspace=self.src)
+            executor.run(job, 1)
+            mount_src = self._mount_source(mock_run.call_args[0][0])
+        mount = _Path(mount_src)
+        self.assertNotEqual(
+            mount, _Path(self.src), "the real source workspace must not be mounted"
+        )
+        self.assertTrue(
+            mount.name.startswith("agent-os-run-"), f"unexpected mount source {mount}"
+        )
+        self.assertFalse(mount.exists(), "the copy must be disposed after the run")
+
+    def test_destructive_command_can_only_destroy_the_copy(self):
+        """A command that wipes /workspace leaves the real source intact."""
+        import shutil as _shutil
+        from pathlib import Path as _Path
+
+        job = _make_job(command=["python", "-c", "print('rm')"])
+
+        def wipe_mounted_workspace(cmd, **kwargs):
+            src_copy = _Path(self._mount_source(cmd))
+            for entry in src_copy.iterdir():
+                if entry.is_dir():
+                    _shutil.rmtree(entry, ignore_errors=True)
+                else:
+                    entry.unlink(missing_ok=True)
+            return MagicMock(returncode=0, stdout=b"", stderr=b"")
+
+        with patch("subprocess.run", side_effect=wipe_mounted_workspace):
+            executor = ContainerExecutor(
+                source_workspace=self.src, keep_workspace=True
+            )
+            outcome = executor.run(job, 1)
+
+        self.assertEqual(
+            (self.src / "marker.txt").read_text(encoding="utf-8"),
+            "original",
+            "the real source workspace was modified by the mounted command",
+        )
+        # keep_workspace retains the copy for inspection - cleaned in tearDown.
+        type(self)._retained_copy = outcome.evidence.get("sandbox") or None
+        self.assertTrue(type(self)._retained_copy,
+                        "keep_workspace must report the retained copy path")
+
+
+
 if __name__ == "__main__":
     unittest.main()

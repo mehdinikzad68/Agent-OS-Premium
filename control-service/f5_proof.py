@@ -23,6 +23,7 @@ import os
 import pathlib
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -74,7 +75,9 @@ def main():
 
     db = tmp / "f5.db"
     token = "f5-proof-token"
-    port = "8831"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+        _s.bind(("127.0.0.1", 0))  # kernel-chosen (T4): never a fixed port
+        port = str(_s.getsockname()[1])
     # POST /api/projects does not accept a scope field (api.py:247-252), so
     # the allowed root can only come from AGENT_OS_PROJECT_SCOPE.
     env = dict(os.environ, AGENT_OS_TOKEN=token,

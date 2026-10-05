@@ -1,5 +1,5 @@
-0. mission mission-45b1b65d6dcb
-1. scope as the human receives it: {"executor": "subprocess-executor", "workspace_paths": ["/tmp/f1-proof-uchin35l/src"], "actions": ["run_tests"], "command": ["/usr/bin/python3", "calc.py"]}
+0. mission mission-2825684b4d6e
+1. scope as the human receives it: {"executor": "subprocess-executor", "workspace_paths": ["/tmp/f1-proof-ar_10ww7/src"], "actions": ["run_tests"], "command": ["/usr/bin/python3", "calc.py"], "action": "run_tests"}
    the command IS visible, as argv: ['/usr/bin/python3', 'calc.py']
    BEFORE the fix this scope had only executor/workspace_paths/actions,
    so a grant meant 'run_tests in /w' with the effect being whatever

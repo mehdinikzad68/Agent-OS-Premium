@@ -539,6 +539,35 @@ class Store:
                 )
                 return cur.rowcount > 0
 
+
+    # -- locked listing helpers (A1, review 2026-10-05) --------------------
+    # The API's list endpoints used to run SELECTs directly on conn,
+    # outside _lock: with ThreadingHTTPServer a GET could then read while
+    # another thread's `with self.conn:` transaction was mid-flight, and
+    # the documented "every store access is serialized by one RLock"
+    # invariant was false. These exist so the API layer never reaches into
+    # the connection to enumerate rows.
+    def list_mission_ids(self) -> list[str]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT id FROM missions ORDER BY created_at"
+            ).fetchall()
+            return [r["id"] for r in rows]
+
+    def list_job_ids(self) -> list[str]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT id FROM jobs ORDER BY created_at"
+            ).fetchall()
+            return [r["id"] for r in rows]
+
+    def list_approval_ids(self) -> list[str]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT id FROM approvals ORDER BY requested_at"
+            ).fetchall()
+            return [r["id"] for r in rows]
+
     @staticmethod
     def _row_to_job(row: sqlite3.Row) -> Job:
         return Job(

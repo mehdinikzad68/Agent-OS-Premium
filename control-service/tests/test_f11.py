@@ -37,6 +37,15 @@ from tests.live_server import boot_server, stop_server  # noqa: E402
 TOKEN = "f11-test-token"
 
 
+# T2 (review 2026-10-05): POSIX/WSL-only module. Discovery on any other
+# platform must SKIP it honestly instead of reporting errors it cannot
+# meaningfully run (READINESS.md documents WSL as the target environment).
+import sys as _sys
+if not _sys.platform.startswith("linux"):
+    raise unittest.SkipTest(
+        "POSIX/WSL-only module - run the suite under WSL (READINESS.md)"
+    )
+
 class MissingResourceIs404Test(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import sys
 
-D = pathlib.Path("/home/mehdi/workspace/Agent-OS/control-service")
+D = pathlib.Path(__file__).resolve().parent
 API = D / "agent_os" / "api.py"
 MODELS = D / "agent_os" / "models.py"
 EXEC = D / "agent_os" / "adapters" / "subprocess_executor.py"

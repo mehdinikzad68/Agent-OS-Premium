@@ -30,7 +30,7 @@ import time
 import urllib.error
 import urllib.request
 
-D = pathlib.Path("/home/mehdi/workspace/Agent-OS/control-service")
+D = pathlib.Path(__file__).resolve().parent
 # This proof runs inside WSL, where the Windows profile is at its /mnt/c path.
 # A `file:` URI with a drive letter does not open there, which is a fact about
 # the runtime rather than about the module.

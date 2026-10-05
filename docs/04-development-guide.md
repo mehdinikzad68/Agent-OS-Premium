@@ -37,7 +37,7 @@ control-service/
       container_executor.py   Docker-isolated executor
     web/
       index.html            single-file RTL dashboard (offline, no CDN)
-  tests/                    503 tests (A1–A13 + CLI gates)
+  tests/                    618 tests (A1–A13 + CLI gates)
     live_server.py          shared harness: OS-chosen port, identity-checked readiness
   run_tests.py              file-writing test runner (sandbox-safe)
   e2e_verify.py             11-step product verification over real HTTP
@@ -88,7 +88,7 @@ This makes it auditable and portable.
 ```bash
 cd control-service
 
-# Unit tests (503 tests)
+# Unit tests (618 tests)
 python3 -B -m unittest discover -s tests -t .
 
 # E2E verification (11 steps over real HTTP)

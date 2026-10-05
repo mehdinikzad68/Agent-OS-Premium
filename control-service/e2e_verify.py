@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -50,7 +51,9 @@ def main() -> int:
             p.unlink()
 
     # Start the real server via the CLI module.
-    port = "8533"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+        _s.bind(("127.0.0.1", 0))  # kernel-chosen (T4): never a fixed port
+        port = str(_s.getsockname()[1])
     cmd = [
         py, "-m", "agent_os.cli", "serve",
         "--db", str(db),
@@ -66,7 +69,7 @@ def main() -> int:
     if proc.poll() is not None:
         fail("server process exited during startup; see server.log")
 
-    base = "http://127.0.0.1:8533"
+    base = f"http://127.0.0.1:{port}"
 
     def req(method: str, path: str, body=None, tok=token):
         data = json.dumps(body).encode() if body is not None else None

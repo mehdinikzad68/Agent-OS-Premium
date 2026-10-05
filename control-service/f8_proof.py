@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -96,7 +97,9 @@ def main() -> None:
 
     db = tmp / "proof.db"
     token = "f8-proof-token"
-    port = "8791"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+        _s.bind(("127.0.0.1", 0))  # kernel-chosen (T4): never a fixed port
+        port = str(_s.getsockname()[1])
     env = dict(os.environ, AGENT_OS_TOKEN=token)
     # --enable-subprocess + --source-workspace is the ONLY way the subprocess
     # adapter gets registered. Without both, dispatch would be refused with

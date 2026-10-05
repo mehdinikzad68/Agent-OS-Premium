@@ -60,8 +60,19 @@ if not any(getattr(h, "_agent_os_audit", False) for h in []):  # pragma: no cove
 
 from agent_os.service import ControlService, ProjectRejected  # noqa: E402
 
-REAL = "/home/mehdi/workspace/wp-bioscentiran"
+# T3 (review 2026-10-05): no machine-specific paths. The scope and the
+# "real" project are derived per-test under tempfile, so the proof runs
+# unchanged on any checkout, not only on the machine it was written on.
 
+
+# T2 (review 2026-10-05): POSIX/WSL-only module. Discovery on any other
+# platform must SKIP it honestly instead of reporting errors it cannot
+# meaningfully run (READINESS.md documents WSL as the target environment).
+import sys as _sys
+if not _sys.platform.startswith("linux"):
+    raise unittest.SkipTest(
+        "POSIX/WSL-only module - run the suite under WSL (READINESS.md)"
+    )
 
 class NoSideEffectTest(unittest.TestCase):
     """Registration and removal must not execute or reach the network."""
@@ -71,8 +82,15 @@ class NoSideEffectTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.svc = ControlService(Path(self.tmp.name) / "n.db")
         self.addCleanup(self.svc.close)
-        os.environ["AGENT_OS_PROJECT_SCOPE"] = "/home/mehdi/workspace"
+        # T3: the allowed scope lives inside this test's own temp dir, and
+        # the project that is supposed to register successfully is a real
+        # directory created underneath it - nothing hardcoded to a machine.
+        self.scope = Path(self.tmp.name) / "scope"
+        self.scope.mkdir()
+        os.environ["AGENT_OS_PROJECT_SCOPE"] = str(self.scope)
         self.addCleanup(os.environ.pop, "AGENT_OS_PROJECT_SCOPE", None)
+        self.real = self.scope / "wp-bioscentiran"
+        self.real.mkdir()
 
     def test_the_audit_hook_is_actually_armed(self):
         """The control. Run this file's own test with the hook removed and it
@@ -91,7 +109,7 @@ class NoSideEffectTest(unittest.TestCase):
     def test_registering_executes_nothing(self):
         HITS.clear()
         _OUTBOUND.clear()
-        p = self.svc.register_project(name="s", environment="wsl", root=REAL)
+        p = self.svc.register_project(name="s", environment="wsl", root=str(self.real))
         self.assertEqual(HITS, [], f"registration executed: {HITS}")
         self.assertEqual(_OUTBOUND, [], f"registration networked: {_OUTBOUND}")
         self.svc.remove_project(p.id)
@@ -100,9 +118,9 @@ class NoSideEffectTest(unittest.TestCase):
         HITS.clear()
         escape = Path(self.tmp.name) / "escape"
         escape.symlink_to("/etc")
-        # /home/mehdi/workspace is NOT here: it is a real directory inside the
-        # scope and registering it is supposed to succeed.
-        absent = "/home/mehdi/workspace/no-such-project-9f2c"
+        # the scope root itself is NOT one of these: self.real is a real
+        # directory inside the scope and registering it must succeed.
+        absent = str(self.scope / "no-such-project-9f2c")
         for root in ("/etc", "relative/path", str(escape), absent):
             with self.assertRaises(ProjectRejected) as ctx:
                 self.svc.register_project(name="x", environment="wsl", root=root)
@@ -110,20 +128,20 @@ class NoSideEffectTest(unittest.TestCase):
             if print_reason is None:
                 self.fail("ProjectRejected carried no structured reason")
         with self.assertRaises(ProjectRejected):
-            self.svc.register_project(name="x", environment="windows", root=REAL)
+            self.svc.register_project(name="x", environment="windows", root=str(self.real))
         self.assertEqual(HITS, [], f"a refusal path executed: {HITS}")
 
     def test_removal_executes_nothing(self):
-        p = self.svc.register_project(name="s", environment="wsl", root=REAL)
+        p = self.svc.register_project(name="s", environment="wsl", root=str(self.real))
         HITS.clear()
         self.assertTrue(self.svc.remove_project(p.id))
         self.assertEqual(HITS, [], f"removal executed: {HITS}")
 
     def test_duplicate_refusal_executes_nothing(self):
-        self.svc.register_project(name="s", environment="wsl", root=REAL)
+        self.svc.register_project(name="s", environment="wsl", root=str(self.real))
         HITS.clear()
         with self.assertRaises(ProjectRejected) as ctx:
-            self.svc.register_project(name="other", environment="wsl", root=REAL)
+            self.svc.register_project(name="other", environment="wsl", root=str(self.real))
         self.assertEqual(ctx.exception.reason, "duplicate")
         self.assertEqual(HITS, [], f"the duplicate path executed: {HITS}")
 

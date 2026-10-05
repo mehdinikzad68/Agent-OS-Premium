@@ -34,7 +34,7 @@ registration path contains no `subprocess`, `Popen`, `docker`, `mount` or
 
 | Capability | How it is verified | Result |
 |---|---|---|
-| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **476/476** pass on Python 3.14.4 |
+| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **618/618** pass on Python 3.14.4 (WSL) |
 | Full product flow over real HTTP | `e2e_verify.py` | PASS |
 | UI structural integrity + handler wiring | `check_ui.py` | pass |
 | Token auth fail-closed, loopback bind | `tests/test_api.py` | pass |
@@ -65,7 +65,7 @@ Reproduce (all must exit 0):
 
 ```bash
 cd control-service
-python3 -B -m unittest discover -s tests -t .   # 476 tests
+python3 -B -m unittest discover -s tests -t .   # 618 tests
 python3 -B e2e_verify.py                        # 11 steps
 python3 -B check_ui.py
 python3 -B p5_proof.py                          # Phase 5: single-use, over real HTTP
@@ -217,7 +217,10 @@ not by turning a retry into an error.
 - Linux/WSL is the tested platform. Windows is **not** verified: no test run on
   native Windows is recorded, so treat any Windows-specific path (drive letters,
   separators, process spawning) as unproven. The earlier claim of "Windows
-  tested, 3.11 + 3.14" was false on both counts.
+  tested, 3.11 + 3.14" was false on both counts. On a non-Linux host the suite
+  now **skips** its POSIX/WSL-only modules at import (T2 guard, review
+  2026-10-05) instead of erroring on them; the portable subset still has no
+  recorded Windows run.
 - The UI requires the token and cannot itself perform approvals — intentional
   (a human decides), but it means the dashboard is not "one-click".
 - **A discovery probe runs with the server's privileges.** A binary that writes

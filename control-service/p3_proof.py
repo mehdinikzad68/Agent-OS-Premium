@@ -26,6 +26,7 @@ import os
 import pathlib
 import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -34,7 +35,9 @@ import urllib.request
 
 D = pathlib.Path(__file__).resolve().parent
 TOKEN = "phase3-proof-token"
-PORT = "8896"
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+    _s.bind(("127.0.0.1", 0))  # kernel-chosen (T4): never a fixed port
+    PORT = str(_s.getsockname()[1])
 
 
 def call(base, method, path, body=None):

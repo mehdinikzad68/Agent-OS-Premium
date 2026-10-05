@@ -7,7 +7,7 @@ web dashboard. Zero dependencies — Python standard library only.
 > **Status: locally testable product, single-user, pre-integration.**
 > The dashboard, API, approval enforcement, subprocess executor, durable
 > evidence and honest event ingestion are implemented and tested
-> (449 unit tests + 11-step E2E, green). Hermes/DSH/Antigravity are **not yet
+> (618 unit tests + 11-step E2E, green). Hermes/DSH/Antigravity are **not yet
 > integrated** (separately gated by design).
 > Honest limits: see [READINESS.md](READINESS.md).
 
@@ -15,10 +15,10 @@ web dashboard. Zero dependencies — Python standard library only.
 
 ```bat
 cd control-service
-C:\...\Python314\python.exe -m agent_os.cli token          :: generate a token
-set AGENT_OS_TOKEN=<paste token>
-C:\...\Python314\python.exe -m agent_os.cli serve --db mission-control.db
-:: open http://127.0.0.1:8470/ , paste the token, press اتصال
+python3 -m agent_os.cli token          # generate a token
+export AGENT_OS_TOKEN=<paste token>
+python3 -m agent_os.cli serve --db mission-control.db
+# open http://127.0.0.1:8470/ , paste the token, press اتصال
 ```
 
 Bind is **loopback-only** (`127.0.0.1`) and `serve` **refuses to start** without a
@@ -60,8 +60,10 @@ schema-versioned migrations). The **only** path from approval to execution is
 `dispatch()`: the A6 idempotency check answers a replay of a finished job
 first, then pure `validate_dispatch()` policy runs (deny → 409, executor never
 invoked; this is where a missing, expired, mismatched or already-consumed
-approval is refused), then the dispatch intent is persisted, then the approval
-is spent, then the registered executor runs, then evidence is verified before
+approval is refused), then the approval
+is spent atomically (the single-winner gate: of two concurrent dispatches
+over one approval exactly one may proceed), then the dispatch intent is
+persisted, then the registered executor runs, then evidence is verified before
 any state becomes `completed_verified`. HTTP is a thin loopback adapter (`agent_os/api.py`);
 executors live behind a named registry — `fake-executor` by default, the real
 `subprocess-executor` only with explicit `--enable-subprocess`.
@@ -88,7 +90,7 @@ agent_os/
   adapters/fake.py        scriptable fake executor (tests/enforcement)
   adapters/subprocess_executor.py   real gated executor, disposable workspace
   web/index.html          single-file RTL dashboard (offline, no CDN)
-tests/                    449 tests (A1–A13 + CLI gates)
+tests/                    618 tests (A1–A13 + CLI gates)
 tests/live_server.py      shared harness: OS-chosen port, identity-checked readiness
 run_tests.py              file-writing test runner (sandbox-safe)
 e2e_verify.py             11-step product verification over real HTTP

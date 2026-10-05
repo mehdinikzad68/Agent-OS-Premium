@@ -26,6 +26,9 @@ def main() -> int:
         f"errors={len(result.errors)} skipped={len(result.skipped)} "
         f"ok={result.wasSuccessful()}"
     )
+    if not sys.platform.startswith("linux"):
+        # T2: POSIX/WSL-only modules were skipped at import (see tests/*).
+        summary += f" [{sys.platform}: POSIX-only modules skipped]"
     results_path.write_text(buf.getvalue() + "\n" + summary + "\n", encoding="utf-8")
     print(summary)  # may be swallowed; the file is authoritative
     return 0 if result.wasSuccessful() else 1

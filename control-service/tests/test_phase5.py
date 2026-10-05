@@ -7,10 +7,10 @@ Each test class boots its own server on an OS-chosen port with its own
 database (see tests/live_server.py), so a result never depends on the order
 the classes happen to run in.
 
-Not covered here: true concurrent dispatch. Single-use is enforced by an
-atomic UPDATE (store.consume_approval) and re-checked in policy, but no test
-fires two dispatches at once - the store serializes access with one RLock, so
-a concurrency test would need a second process to be meaningful.
+Not covered here: true concurrent dispatch - that has its own test,
+tests/test_dispatch_concurrency.py (two threads, one approval, exactly one
+execution), added after review 2026-10-05 showed the store's RLock
+serializes each store CALL but not dispatch()'s check-then-act sequence.
 """
 import json
 import os
@@ -31,6 +31,15 @@ from tests.live_server import boot_server, stop_server, restart_server  # noqa: 
 
 TOKEN = "p5-test-token"
 
+
+# T2 (review 2026-10-05): POSIX/WSL-only module. Discovery on any other
+# platform must SKIP it honestly instead of reporting errors it cannot
+# meaningfully run (READINESS.md documents WSL as the target environment).
+import sys as _sys
+if not _sys.platform.startswith("linux"):
+    raise unittest.SkipTest(
+        "POSIX/WSL-only module - run the suite under WSL (READINESS.md)"
+    )
 
 class Phase5BaseTest(unittest.TestCase):
     """Base class that boots a live server for each test class."""

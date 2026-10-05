@@ -13,6 +13,7 @@ not a direct call into the executor.
 import json
 import os
 import pathlib
+import socket
 import subprocess
 import sys
 import tempfile
@@ -98,7 +99,9 @@ def main():
 
     db = tmp / "f3.db"
     token = "f3-proof-token"
-    port = "8823"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as _s:
+        _s.bind(("127.0.0.1", 0))  # kernel-chosen (T4): never a fixed port
+        port = str(_s.getsockname()[1])
     env = dict(os.environ, AGENT_OS_TOKEN=token)
     # The server gets its OWN session. Without this, when the fix is absent
     # the executor's os.killpg has no separate group to target and can signal

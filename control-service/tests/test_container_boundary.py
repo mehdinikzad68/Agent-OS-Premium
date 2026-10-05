@@ -80,6 +80,15 @@ def _image_available(image: str) -> bool:
         return False
 
 
+# T2 (review 2026-10-05): POSIX/WSL-only module. Discovery on any other
+# platform must SKIP it honestly instead of reporting errors it cannot
+# meaningfully run (READINESS.md documents WSL as the target environment).
+import sys as _sys
+if not _sys.platform.startswith("linux"):
+    raise unittest.SkipTest(
+        "POSIX/WSL-only module - run the suite under WSL (READINESS.md)"
+    )
+
 @unittest.skipUnless(_docker_available(), "Docker daemon not available")
 class ContainerSecurityBoundaryTest(unittest.TestCase):
     """Security boundary tests using real Docker containers."""
@@ -200,6 +209,31 @@ class ContainerSecurityBoundaryTest(unittest.TestCase):
         )
         self.assertEqual(exit_code, 0)
         self.assertIn("1000", diff)
+
+    def test_destruction_cannot_touch_the_real_source(self):
+        """H2: /workspace is a disposable COPY, so even a command that wipes
+        it cannot modify the operator's real project directory."""
+        cmd = (
+            "import os\n"
+            "def rm(p):\n"
+            "    try:\n"
+            "        if os.path.isdir(p) and not os.path.islink(p):\n"
+            "            for e in os.listdir(p): rm(os.path.join(p, e))\n"
+            "            os.rmdir(p)\n"
+            "        else:\n"
+            "            os.remove(p)\n"
+            "    except OSError:\n"
+            "        pass\n"
+            "[rm(os.path.join('/workspace', e)) for e in os.listdir('/workspace')]\n"
+            "print('wiped', os.listdir('/workspace'))\n"
+        )
+        exit_code, diff, _ = self._run_in_container(["python", "-c", cmd])
+        self.assertEqual(exit_code, 0, f"wipe command failed: {diff}")
+        self.assertEqual(
+            (self.src / "marker.txt").read_text(encoding="utf-8"),
+            "original",
+            "a destructive in-container command modified the real source",
+        )
 
     def test_no_capabilities(self):
         """The container has no Linux capabilities.

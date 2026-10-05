@@ -670,8 +670,40 @@ class ControlService:
             )
             raise DispatchRefused(reason)
 
-        # Persist the dispatch intent BEFORE invoking the executor.
+        # Phase 5 + H1: spend the approval BEFORE any state is written and
+        # before the executor runs. consume_approval() is an atomic
+        # UPDATE ... WHERE consumed_at IS NULL, so it doubles as the
+        # single-winner gate: of two threads that both passed
+        # validate_dispatch over the same unspent approval
+        # (ThreadingHTTPServer dispatches concurrently; the store's RLock
+        # serializes each store CALL, not this check-then-act sequence),
+        # exactly one receives True. The loser is refused here - before it
+        # can touch the job's state or the audit trail - so one approval can
+        # never run two executions, and the shared dedup key can never hide
+        # a second run. Even if the executor crashes afterwards, the
+        # approval is already spent: a crashed job stays
+        # INTERRUPTED_UNKNOWN and cannot be re-dispatched with it.
         attempt = job.attempt_no + 1
+        if approval is None or not self.store.consume_approval(approval.id, iso(now)):
+            self.store.record_event(
+                "dispatch_denied",
+                {"job_id": job_id, "reason": "approval_already_consumed"},
+            )
+            log_event(
+                _log,
+                logging.WARNING,
+                "dispatch.refused",
+                job_id=job_id,
+                reason="approval_already_consumed",
+            )
+            raise DispatchRefused("approval_already_consumed")
+
+        self.store.record_event(
+            "approval_consumed",
+            {"approval_id": approval.id, "job_id": job_id, "attempt": attempt},
+        )
+
+        # Persist the dispatch intent BEFORE invoking the executor.
         self.store.update_job(job_id, state=JobState.DISPATCHED, attempt_no=attempt)
         self.store.record_event(
             "dispatched",
@@ -688,18 +720,6 @@ class ControlService:
             executor=job.executor,
             actions=list(job.actions),
         )
-
-        # Phase 5: consume the approval BEFORE the executor runs.
-        # This is the single-use enforcement: even if the executor crashes,
-        # the approval is already spent. A crashed job stays INTERRUPTED_UNKNOWN
-        # and cannot be re-dispatched with the same approval.
-        if approval is not None:
-            self.store.consume_approval(approval.id, iso(now))
-            self.store.record_event(
-                "approval_consumed",
-                {"approval_id": approval.id, "job_id": job_id, "attempt": attempt},
-            )
-
         try:
             outcome: WorkerOutcome = adapter.run(job, attempt)
         except WorkerLostError:

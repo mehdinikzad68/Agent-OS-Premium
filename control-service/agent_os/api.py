@@ -639,28 +639,28 @@ class AgentOSApi:
         }
 
     def _all_missions(self) -> list[Mission]:
-        rows = self.service.store.conn.execute("SELECT id FROM missions ORDER BY created_at").fetchall()
+        # Locked store helper (A1): never touch store.conn directly here.
         missions = []
-        for r in rows:
-            m = self.service.store.get_mission(r["id"])
+        for mid in self.service.store.list_mission_ids():
+            m = self.service.store.get_mission(mid)
             if m is not None:
                 missions.append(m)
         return missions
 
     def _all_jobs(self) -> list[Job]:
-        rows = self.service.store.conn.execute("SELECT id FROM jobs ORDER BY created_at").fetchall()
+        # Locked store helper (A1): never touch store.conn directly here.
         jobs = []
-        for r in rows:
-            j = self.service.store.get_job(r["id"])
+        for jid in self.service.store.list_job_ids():
+            j = self.service.store.get_job(jid)
             if j is not None:
                 jobs.append(j)
         return jobs
 
     def _all_approvals(self) -> list[Approval]:
-        rows = self.service.store.conn.execute("SELECT id FROM approvals ORDER BY requested_at").fetchall()
+        # Locked store helper (A1): never touch store.conn directly here.
         approvals = []
-        for r in rows:
-            a = self.service.store.get_approval(r["id"])
+        for aid in self.service.store.list_approval_ids():
+            a = self.service.store.get_approval(aid)
             if a is not None:
                 approvals.append(a)
         return approvals

@@ -145,6 +145,7 @@ def cmd_serve(args) -> int:
             print("--enable-container requires --source-workspace", file=sys.stderr)
             service.close()
             return 2
+        from pathlib import Path
         from .adapters.container_executor import ContainerExecutor
 
         register_executor(
@@ -153,6 +154,7 @@ def cmd_serve(args) -> int:
                 source_workspace=args.source_workspace,
                 image=args.container_image,
                 timeout_seconds=args.container_timeout,
+                sandbox_root=args.sandbox_root or (Path(args.db).parent / "sandboxes"),
             ),
         )
         print(
@@ -161,7 +163,8 @@ def cmd_serve(args) -> int:
         )
         # The container executor provides real isolation: the command runs
         # inside a Docker container with no network, read-only root filesystem,
-        # no Linux capabilities, and only the project directory mounted.
+        # no Linux capabilities, and only a DISPOSABLE COPY of the project
+        # mounted (H2: a destructive command can only destroy the copy).
         # This closes F2: the command cannot read or write outside the
         # mounted workspace.
         log_event(

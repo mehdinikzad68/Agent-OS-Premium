@@ -21,22 +21,26 @@ with evidence, and a built-in dashboard.
 
 ## Quick start
 
-```bat
+```bash
+# WSL / Linux — the tested platform (see READINESS.md)
 cd control-service
-"C:\Users\Mehdi\AppData\Local\Programs\Python\Python314\python.exe" -m agent_os.cli token
-set AGENT_OS_TOKEN=<paste token>
-"C:\Users\Mehdi\AppData\Local\Programs\Python\Python314\python.exe" -m agent_os.cli serve --db mission-control.db
-:: open http://127.0.0.1:8470/ , paste the token, press اتصال
+python3 -m agent_os.cli token
+export AGENT_OS_TOKEN=<paste token>
+python3 -m agent_os.cli serve --db mission-control.db
+# open http://127.0.0.1:8470/ , paste the token, press اتصال
 ```
 
 ## Verify a build
 
-```bat
+```bash
 cd control-service
-python run_tests.py     :: 503 enforcement/security + CLI tests
-python e2e_verify.py    :: 11-step product verification over real HTTP
-python check_ui.py      :: UI structural validation
+python3 run_tests.py     # 618 tests -> .test-results.txt (exit 0 = pass)
+python3 e2e_verify.py    # 11-step product verification over real HTTP
+python3 check_ui.py      # UI structural validation
 ```
+
+On a non-Linux host the POSIX/WSL-only test modules **skip** honestly
+instead of erroring; WSL is the platform the suite is verified on.
 
 ## Current status (honest)
 
@@ -47,7 +51,7 @@ dashboard. **Not** done: any real agent runtime (Hermes/DSH/Antigravity),
 an artifact store, OS-level worker containment, multi-user, network-egress
 enforcement. See [READINESS.md](control-service/READINESS.md).
 
-Requires Python ≥ 3.11 (3.11 and 3.14 verified). No third-party dependencies.
+Requires Python ≥ 3.11 on WSL/Linux (3.11 and 3.14 verified under WSL). No third-party dependencies.
 
 ## Architecture
 

@@ -9,7 +9,7 @@ import pathlib
 import subprocess
 import sys
 
-ROOT = pathlib.Path("/home/mehdi/workspace/Agent-OS/control-service")
+ROOT = pathlib.Path(__file__).resolve().parent
 EXECUTOR = ROOT / "agent_os/adapters/container_executor.py"
 
 # The security flag we will remove

@@ -9,7 +9,7 @@ import pathlib
 import subprocess
 import sys
 
-ROOT = pathlib.Path("/home/mehdi/workspace/Agent-OS/control-service")
+ROOT = pathlib.Path(__file__).resolve().parent
 POLICY = ROOT / "agent_os/policy.py"
 
 CHECK = """    # Check 9: single-use. A consumed approval is dead.
