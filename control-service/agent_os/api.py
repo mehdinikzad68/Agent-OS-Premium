@@ -768,6 +768,12 @@ def make_handler(api: AgentOSApi, token: Optional[str]) -> type[BaseHTTPRequestH
             if method == "GET" and self.path in ("/", "/ui", "/index.html"):
                 self._serve_ui()
                 return
+            if method == "GET" and self.path == "/three.min.js":
+                self._serve_static("three.min.js", "application/javascript")
+                return
+            if method == "GET" and self.path == "/three.min.js":
+                self._serve_static("three.min.js", "application/javascript")
+                return
             if not self._authorize():
                 self._send(401, {"error": {"code": "unauthorized", "message": "missing or invalid token"}})
                 return
@@ -801,20 +807,23 @@ def make_handler(api: AgentOSApi, token: Optional[str]) -> type[BaseHTTPRequestH
         def do_GET(self):  # noqa: N802
             self._timed("GET")
 
-        def _serve_ui(self) -> None:
+        def _serve_static(self, filename: str, content_type: str) -> None:
             from pathlib import Path
 
-            ui = Path(__file__).resolve().parent / "web" / "index.html"
-            if not ui.exists():
-                self._send(404, {"error": {"code": "not_found", "message": "UI not bundled"}})
+            filepath = Path(__file__).resolve().parent / "web" / filename
+            if not filepath.exists():
+                self._send(404, {"error": {"code": "not_found", "message": f"{filename} not bundled"}})
                 return
-            data = ui.read_bytes()
+            data = filepath.read_bytes()
             self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(data)
+
+        def _serve_ui(self) -> None:
+            self._serve_static("index.html", "text/html; charset=utf-8")
 
         def do_POST(self):  # noqa: N802
             self._timed("POST")
