@@ -4,8 +4,17 @@ This document states exactly what is verified, what is not, and what must be
 decided before this can be called integrated with real agent runtimes.
 
 Last measured: 2026-10-02, WSL2 Ubuntu-26.04, Python 3.14.4. Every number
-below was produced on that machine on that day. The tree is uncommitted at the
-time of writing; the counts are measured, not asserted.
+below was produced on that machine on that day.
+
+> **Repository state when this revision was written (2026-10-06):** branch
+> `main`, HEAD `4783c9b54f13ca869160eb3b7c0c8924f62e8db1`, 6 commits ahead of
+> `origin/main` at the time of the snapshot. The working tree is **not**
+> clean: `control-service/agent_os/web/index.html` carries an uncommitted
+> change of roughly +2004/−830 lines (the Canvas 2D dashboard — see
+> ADR-001), three files under `UI-Image/` are deleted in the working tree but unstaged, and
+> `docs/UI-Design/` is untracked. The counts above were measured on an
+> earlier clean-ish tree, so treat them as **measured, not re-verified at
+> HEAD**. Full detail: [00-CURRENT-STATE](../docs/00-CURRENT-STATE.md).
 
 This revision covers Phase 5 (a real approval gate) and a test-harness defect
 found while verifying it. The Phase 3 and Phase 4 rows are unchanged and were
@@ -34,7 +43,7 @@ registration path contains no `subprocess`, `Popen`, `docker`, `mount` or
 
 | Capability | How it is verified | Result |
 |---|---|---|
-| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **643/643** pass on Python 3.14.4 (WSL) |
+| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **643 tests** in the suite — measured on 2026-10-02 as all passing on Python 3.14.4 (WSL). Not re-run since; see the note on counts below |
 | Full product flow over real HTTP | `e2e_verify.py` | PASS |
 | UI structural integrity + handler wiring | `check_ui.py` | pass |
 | Token auth fail-closed; loopback bind **enforced** (serve() refuses other hosts) | `tests/test_api.py` + `tests/test_api_edge_cases.py` | pass |

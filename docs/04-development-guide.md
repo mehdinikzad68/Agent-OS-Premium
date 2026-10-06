@@ -11,9 +11,9 @@ UI (web/index.html) ─┐
 CLI / scripts ───────┼─> HTTP API (token, loopback) ─> ControlService ─> SQLite
                      │         │                              │
                      │         └─ executor registry           └─ policy.py (pure, deny-first)
-                     │                ├─ fake-executor
-                     │                └─ subprocess-executor (gated, disposable copy)
-                     │                └─ container-executor (Docker isolation)
+                     │                ├─ fake-executor  ← the ONLY default
+                     │                ├─ subprocess-executor (opt-in: --enable-subprocess --source-workspace)
+                     │                └─ container-executor (opt-in: --enable-container; python:3.14-slim)
 ```
 
 ## Project Structure
@@ -27,17 +27,20 @@ control-service/
     service.py              ControlService — the only path approval → dispatch
     api.py                  loopback JSON API + UI serving (token auth)
     cli.py                  serve / token / init / test entry points
-    discovery.py            tool discovery (read-only, writes nothing)
-    graphics.py             inline-SVG graphics library
+    discovery.py            tool discovery — probes binaries, installs nothing
+    graphics.py             graphics library (shape_2d, shape_3d, chart, diagram)
     logging_setup.py        structured logging + CLI viewer
     paths.py                path validation and canonicalization
     adapters/
       fake.py               scriptable fake executor (tests/enforcement)
       subprocess_executor.py  real gated executor, disposable workspace
       container_executor.py   Docker-isolated executor
+      hermes_executor.py    Hermes adapter (not in the default registry)
+      hermes_ingest.py      external activity ingestion → event log
+      __init__.py
     web/
       index.html            single-file RTL dashboard (offline, no CDN)
-  tests/                    643 tests (A1–A13 + CLI gates)
+  tests/                    A1–A13 + CLI gates — see the note on counts below
     live_server.py          shared harness: OS-chosen port, identity-checked readiness
   run_tests.py              file-writing test runner (sandbox-safe)
   e2e_verify.py             11-step product verification over real HTTP
@@ -88,7 +91,7 @@ This makes it auditable and portable.
 ```bash
 cd control-service
 
-# Unit tests (643 tests)
+# Unit tests — unittest is the canonical framework for this project
 python3 -B -m unittest discover -s tests -t .
 
 # E2E verification (11 steps over real HTTP)
@@ -99,6 +102,15 @@ python3 -B check_ui.py
 
 # All must exit 0
 ```
+
+**About test counts.** The canonical runner is `unittest`. A **static
+inventory** of the suite is **643 test functions across 43 files** (a count
+of `def test_` declarations; `tests/live_server.py` excluded as a harness).
+That is a size statement only — the suite was **not** run to produce this
+documentation, so no pass/fail ratio is claimed here. `pytest` happens to be
+installed locally, but it is **not** the canonical framework and the results
+it prints should not be quoted as the project's. Run `run_tests.py` for a
+real execution result.
 
 ## Test Philosophy
 
@@ -113,13 +125,16 @@ python3 -B check_ui.py
 
 1. Create `agent_os/adapters/my_executor.py`
 2. Implement the `execute(job, evidence) -> WorkerOutcome` interface
-3. Register in `agent_os/api.py`:
-   ```python
-   from .adapters.my_executor import MyExecutor
-   register_executor("my-executor", MyExecutor())
-   ```
+3. Register in the CLI, behind an explicit opt-in flag (see `cli.py:66`,
+   which registers only `fake-executor` by default — the pattern to follow
+   is `subprocess_executor.py`, gated by `--enable-subprocess`)
 4. Add tests in `tests/test_my_executor.py`
-5. Update the executor registry documentation
+5. Update the executor registry documentation and
+   [CAPABILITY-MATRIX.md](../docs/CAPABILITY-MATRIX.md)
+
+> The registry is the *only* dispatch surface. An executor that is not
+> registered cannot be reached by `POST /api/jobs/{id}/dispatch` — the
+> request is refused with `unknown_executor`.
 
 ## Adding a New Policy Check
 

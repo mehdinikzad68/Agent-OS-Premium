@@ -65,7 +65,7 @@ The dashboard shows:
 - **Approvals** — review and decide approval requests
 - **Events** — live audit trail
 - **Projects** — registered project roots
-- **Tools** — discovered tools (read-only)
+- **Tools** — discovered tools (⚠ not a safe read; see below)
 
 ## Enabling the Subprocess Executor
 
@@ -79,6 +79,10 @@ python -m agent_os.cli serve --db mission-control.db \
   --subprocess-timeout 120
 ```
 
+`--source-workspace` is **required** with `--enable-subprocess`; starting
+without it is refused and exits with code 2. Until you do this, the only
+registered executor is `fake-executor`.
+
 ## Enabling the Container Executor
 
 The container executor provides Docker isolation (no network, read-only root,
@@ -87,8 +91,13 @@ no capabilities). It requires Docker to be installed and running.
 ```bash
 python -m agent_os.cli serve --db mission-control.db \
   --enable-container \
-  --container-image python:3.11-slim
+  --container-image python:3.14-slim
 ```
+
+The image shown is the actual default (`cli.py:274`). `--container-timeout`
+defaults to 120 seconds (`cli.py:278`). Only the default
+`--enable-container` is needed to register the executor; the flags above are
+for overrides.
 
 ## Stopping the Server
 
@@ -104,3 +113,18 @@ the database and releasing the port.
 | "database is locked" | Another process is holding the DB; stop other instances |
 | Dashboard shows "unauthorized" | Token mismatch; regenerate and re-paste |
 | Jobs stuck in `interrupted_unknown` | Worker died; reconcile manually via API or UI |
+
+## Note on the Tools panel
+
+The Tools panel's automatic refresh (the polling loop) reads only
+`GET /api/tools/registry`, which is a pure read of the stored registry. It
+does **not** call `/api/tools/discover` automatically.
+
+Tool discovery runs only on an explicit user action (the Discover button),
+not on page load and not on any timer. `POST` or `GET /api/tools/discover`
+executes `discovery.discover(...)`, which **probes allowlisted binaries**
+(it runs each allowlisted binary with a version probe) and may report
+`confidence: exact`. Discovery is therefore *not* a passive read, and it
+must never be added to the automatic refresh/polling path — but it installs
+nothing, writes nothing to the registry or store, and grants nothing
+(`execution_granted: false`).

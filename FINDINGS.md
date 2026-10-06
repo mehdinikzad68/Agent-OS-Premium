@@ -40,8 +40,14 @@ matters as much as the list: a reviewer's report is a hypothesis, not a finding.
 | F9 | `_copytree_into` recurses through a link to an ancestor until ELOOP; fails closed but with a raw OSError | low | **CLOSED** — links are copied as links, never followed |
 | F10 | `POST /api/projects` ignores the `scope` parameter its service method accepts | informational | **CLOSED** — the parameter is removed, not wired up |
 
-`SCHEMA_VERSION` is 2 and must stay 2 for the work above; F1 and F8 both needed
-no migration because `scope_json` and `command` are existing columns.
+**Current schema version: 4** (`store.py:37`), with the v1→v4 migrations
+applied on first start. The line below is kept as a **historical note**
+because it describes the state at the time F1–F10 were closed — it is not a
+statement about the current database.
+
+> *Historical:* at the time those fixes landed, `SCHEMA_VERSION` was 2 and
+> stayed 2; F1 and F8 needed no migration because `scope_json` and `command`
+> are existing columns.
 
 ---
 

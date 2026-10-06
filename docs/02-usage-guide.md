@@ -49,26 +49,32 @@ curl -X POST http://127.0.0.1:8470/api/missions \
 ### 2. Propose a job
 
 ```bash
-curl -X POST http://127.0.0.1:8470/api/missions/<mission_id>/jobs \
+curl -X POST http://127.0.0.1:8470/api/jobs \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
+    "mission_id": "<mission_id>",
     "title": "Run tests",
     "executor": "subprocess-executor",
     "workspace_paths": ["/home/mehdi/workspace/myproject"],
     "actions": ["run_tests"],
-    "command": ["python", "-m", "pytest", "-v"]
+    "command": ["python", "-m", "unittest", "discover"]
   }'
 ```
 
 ### 3. Request approval
 
 ```bash
-curl -X POST http://127.0.0.1:8470/api/jobs/<job_id>/request-approval \
+curl -X POST http://127.0.0.1:8470/api/approvals \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"expires_at": "2026-10-04T18:00:00Z"}'
+  -d '{"job_id": "<job_id>", "expires_at": "2026-10-04T18:00:00Z"}'
 ```
+
+The request body may also include a `scope` (executor, workspace paths,
+actions) and an `action` to bind the grant to one action. Note that
+`scope.command` is deliberately ignored — the command must come from the
+job, so the scope and the job can never disagree.
 
 ### 4. Review and decide (human only)
 
@@ -111,13 +117,18 @@ terminal for automation — no auto-rerun. A human must reconcile:
 curl -X POST http://127.0.0.1:8470/api/jobs/<job_id>/reconcile \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"outcome": "completed_verified", "note": "Manually verified the fix"}'
+  -d '{"final_state": "completed_verified", "note": "Manually verified the fix"}'
 ```
 
-## Knowledge Docs
+## Knowledge Docs — Planned (no HTTP endpoint)
 
-Knowledge docs are versioned documents stored in SQLite. They support
-conflict detection — editing a stale revision raises a conflict.
+Knowledge docs are designed as versioned documents stored in SQLite, with
+conflict detection on stale revisions. The service and store layers contain
+the methods (`service.create_knowledge_doc`, `store.update_knowledge_doc`),
+but **no HTTP route is mapped to them**, so there is no API to call yet.
+The examples below are the intended shape, not something you can run today —
+POST/PUT `/api/knowledge` currently returns `404`, because the route does
+not exist.
 
 ```bash
 # Create
@@ -149,9 +160,9 @@ curl -X POST http://127.0.0.1:8470/api/workflows \
     "inputs_schema": {},
     "default_executor": "subprocess-executor",
     "nodes": [
-      {"id": "lint", "action_type": "lint", "depends_on": []},
-      {"id": "test", "action_type": "run_tests", "depends_on": ["lint"]},
-      {"id": "build", "action_type": "build", "depends_on": ["test"]}
+      {"id": "lint", "action_type": "execute_job", "depends_on": []},
+      {"id": "review", "action_type": "human_approval", "depends_on": ["lint"]},
+      {"id": "test", "action_type": "execute_job", "depends_on": ["review"]}
     ]
   }'
 
@@ -164,7 +175,9 @@ curl -X POST http://127.0.0.1:8470/api/workflows/<template_id>/execute \
 
 ## Graphics
 
-Graphics are inline-SVG visualizations rendered through the API.
+Graphics are persisted visualization configurations. Create one, render it to
+SVG, or export and re-import it. Supported `kind` values are `shape_2d`,
+`shape_3d`, `chart`, and `diagram`.
 
 ```bash
 curl -X POST http://127.0.0.1:8470/api/graphics \
@@ -172,7 +185,11 @@ curl -X POST http://127.0.0.1:8470/api/graphics \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Workflow DAG",
-    "kind": "flowchart",
-    "config": {"nodes": [...], "edges": [...]}
+    "kind": "diagram",
+    "config": {"nodes": [], "edges": []}
   }'
+
+# Render to SVG
+curl -X POST http://127.0.0.1:8470/api/graphics/<graphic_id>/render \
+  -H "Authorization: Bearer <token>"
 ```

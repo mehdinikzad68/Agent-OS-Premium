@@ -1,6 +1,21 @@
 # Project context
 
-- SESSION ENTRY POINT: hand the model `AGENT-OS-HANDOFF.md` at workspace root. It is self-contained (state, verified runtime facts, open decisions, architecture summary, working rules, do-not-read list). The 297KB root session export must NOT be read — all its findings are already extracted into the handoff.
+> **Where the truth lives now (2026-10-06):** the canonical repo is
+> `/home/mehdi/workspace/Agent-OS` on WSL Ubuntu-26.04 (branch `main`, HEAD
+> `4783c9b54f13ca869160eb3b7c0c8924f62e8db1`). The Windows copy at
+> `D:\DEV-Studio\Programming\Agent-OS` is a **legacy, non-authoritative
+> mirror** with a different, unrelated commit history — never develop in it
+> (ADR-002). The dashboard reference is the **Canvas 2D** UI; the Three.js
+> Galaxy Command variant is experimental (ADR-001). `SCHEMA_VERSION` is now
+> **4** (line 26 below is a 2026-09-22 historical note about schema v2).
+
+- SESSION ENTRY POINT: the handoff file `AGENT-OS-HANDOFF.md` was referenced
+  at the workspace root but **does not exist in the repository** (verified by
+  name search, 2026-10-06). Treat it as a *historical reference*, not a file
+  you can open. For current state use `docs/00-CURRENT-STATE.md`,
+  `docs/CAPABILITY-MATRIX.md` and `control-service/READINESS.md`. The
+  "297KB root session export" it described is likewise gone and must not be
+  searched for.
 - Confirmed verified runtime facts (2026-09-21): Hermes v0.21.3 at C:\Users\Mehdi\AppData\Local\hermes (API_SERVER not enabled, no ~/.hermes); DSH 0.1.5-rc.2 with state in C:\Users\Mehdi\.dsh (default provider seekai/glm-5.3); Antigravity is IDE-only — no agy CLI on PATH, no google-antigravity Python package.
 - A prior DSH session against this project died on turn 2 with HTTP 504; permission preset was workspace-write. Treat as unreconciled unknown job, not a trusted result.
 
