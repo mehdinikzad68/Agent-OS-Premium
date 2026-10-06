@@ -443,24 +443,7 @@ def _read_text(path: Path, limit: int = 64_000) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def _detect_test_report(stdout: str, stderr: str, exit_code: int) -> str:
-    """Truthful test-signal detection. Only a recognizable passing test
-    summary yields a non-empty report (which the service may then verify)."""
-    combined = f"{stdout}\n{stderr}"
-    markers = (
-        " passed",
-        " ok",
-        "tests passed",
-        "PASSED",
-        "succeeded",
-    )
-    for m in markers:
-        if m in combined and exit_code == 0:
-            # Extract up to 4 lines around the marker for a human-reviewable report.
-            lines = combined.splitlines()
-            hits = [i for i, ln in enumerate(lines) if m in ln]
-            if hits:
-                i = hits[0]
-                snippet = "\n".join(lines[max(0, i - 2): i + 3])
-                return f"detected test signal '{m}' (exit 0)\n{snippet}"
-    return ""
+# M4 (B2): detection lives once, in agent_os/evidence.py, where both
+# executors share it; framework summaries are tried before the
+# unchanged generic markers.
+from ..evidence import detect_test_report as _detect_test_report

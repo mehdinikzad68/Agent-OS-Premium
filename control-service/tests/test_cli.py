@@ -41,6 +41,11 @@ class CliGateTest(unittest.TestCase):
         rc = cmd_serve(self._args(["--token", "t", "--enable-subprocess"]))
         self.assertEqual(rc, 2)
 
+    def test_non_loopback_host_fails_closed(self):
+        """M3: --host 0.0.0.0 exits 2 before any socket is opened."""
+        rc = cmd_serve(self._args(["--token", "t", "--host", "0.0.0.0"]))
+        self.assertEqual(rc, 2)
+
     def test_parser_exposes_all_documented_flags(self):
         args = self._args([
             "--insecure", "--port", "9999", "--host", "127.0.0.1",

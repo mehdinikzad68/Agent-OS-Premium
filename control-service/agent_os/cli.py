@@ -25,7 +25,7 @@ import sys
 from .logging_setup import configure, get_logger, log_event, register_secret
 from .models import utc_now
 from .service import ControlService
-from .api import serve, register_executor, generate_token
+from .api import LOOPBACK_HOSTS, serve, register_executor, generate_token
 from .adapters.fake import FakeExecutor
 
 DEFAULT_HOST = "127.0.0.1"
@@ -47,6 +47,17 @@ def cmd_serve(args) -> int:
     register_secret(token)
     if token is None and not args.insecure:
         print("refusing to serve without a token. set AGENT_OS_TOKEN, pass --token, or --insecure", file=sys.stderr)
+        return 2
+
+    if args.host not in LOOPBACK_HOSTS:
+        # M3 (B2): README/A8 promise loopback-only; enforce it instead of
+        # only documenting it. --insecure does NOT widen this.
+        print(
+            f"refusing non-loopback host {args.host!r}: Agent-OS is "
+            "loopback-only (A8); put a reverse proxy in front if you "
+            "really need LAN access",
+            file=sys.stderr,
+        )
         return 2
 
     service = ControlService(args.db)

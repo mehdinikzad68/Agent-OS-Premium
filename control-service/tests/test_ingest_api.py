@@ -76,6 +76,12 @@ class IngestApiTest(unittest.TestCase):
         cls.tmp = pathlib.Path(tempfile.mkdtemp(prefix="p4api-"))
         cls.source = cls.tmp / "state.db"
         build_source(cls.source, SESSIONS, MESSAGES)
+        # M1 (B2): ingest sources are allowlisted (AGENT_OS_INGEST_ROOTS);
+        # every fixture in this class lives under cls.tmp. Set BEFORE boot
+        # so the server subprocess inherits it.
+        import os as _os
+        cls._prev_roots = _os.environ.get("AGENT_OS_INGEST_ROOTS")
+        _os.environ["AGENT_OS_INGEST_ROOTS"] = str(cls.tmp)
         # The port is the kernel's choice, not ours: see tests/live_server.py
         # for why a fixed port made this suite lie after a killed run.
         cls.srv = boot_server(TOKEN, prefix="p4api-srv-")
@@ -84,6 +90,11 @@ class IngestApiTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         stop_server(cls.srv)
+        import os as _os
+        if getattr(cls, "_prev_roots", None) is None:
+            _os.environ.pop("AGENT_OS_INGEST_ROOTS", None)
+        else:
+            _os.environ["AGENT_OS_INGEST_ROOTS"] = cls._prev_roots
         import shutil
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
@@ -135,6 +146,13 @@ class IngestApiTest(unittest.TestCase):
         st, body = self._ingest(cursor=0)
         self.assertEqual(json.loads(body)["added"], 0, body)
         self.assertEqual(len(self._external()[1]), 3)
+
+    def test_a_source_outside_the_allowed_roots_is_403(self):
+        """M1: an arbitrary local path must be refused, not read."""
+        st, body = self._raw("POST", "/api/events/ingest",
+                             {"source": "/etc/passwd"})
+        self.assertEqual(st, 403, body)
+        self.assertEqual(json.loads(body)["error"]["code"], "forbidden")
 
     # -- 2. unavailable is not empty ------------------------------------
 

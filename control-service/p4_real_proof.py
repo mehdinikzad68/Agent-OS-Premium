@@ -116,6 +116,8 @@ def api(base, method, path, body=None):
 
 
 tmp = pathlib.Path(tempfile.mkdtemp(prefix="p4real-"))
+# M1 (B2): the ingest allowlist is env-scoped; boot() inherits this.
+os.environ["AGENT_OS_INGEST_ROOTS"] = str(tmp)
 proc = base = None
 try:
     # immutable=1 for the same reason the adapter uses it: this profile is on

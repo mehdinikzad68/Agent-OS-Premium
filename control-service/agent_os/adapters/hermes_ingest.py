@@ -283,3 +283,67 @@ def default_profile_db(profile: str = "my-personal-assistant") -> str:
         if os.path.isfile(candidate):
             return candidate
     return os.path.join("~", ".hermes", "profiles", profile, "state.db")
+
+
+# ---------------------------------------------------------------------------
+# M1 (B2, review 2026-10-05): the ingest route accepted ANY local path, a
+# token-gated arbitrary-read primitive. Sources must resolve under an allowed
+# root: $AGENT_OS_INGEST_ROOTS (os.pathsep separated) plus the Hermes profile
+# locations default_profile_db() could name. Deny by default; fail closed.
+# ---------------------------------------------------------------------------
+
+INGEST_ROOTS_ENV = "AGENT_OS_INGEST_ROOTS"
+
+
+def allowed_source_roots() -> list:
+    """Every directory an ingest source may resolve inside."""
+    import glob as _glob
+    import os as _os
+    from pathlib import Path as _Path
+
+    roots = []
+    raw = _os.environ.get(INGEST_ROOTS_ENV, "")
+    for part in raw.split(_os.pathsep):
+        if part.strip():
+            roots.append(_Path(part.strip()).expanduser())
+    # The built-in defaults mirror default_profile_db(): every location that
+    # function could ever have chosen, extended to the profiles ROOT so any
+    # profile under it stays allowed.
+    home = _Path(_os.path.expanduser("~"))
+    roots.append(home / ".hermes" / "profiles")
+    userprofile = _os.environ.get("USERPROFILE")
+    if userprofile:
+        roots.append(
+            _Path(userprofile) / "AppData" / "Local" / "hermes" / "profiles"
+        )
+    for found in _glob.glob("/mnt/*/Users/*/AppData/Local/hermes/profiles"):
+        roots.append(_Path(found))
+    return roots
+
+
+def assert_source_allowed(source: str):
+    """Raise PermissionError when `source` resolves outside every allowed root.
+
+    Resolution (not the literal string) decides, so `..` segments and a
+    symlink planted inside an allowed root cannot widen it.
+    """
+    import os as _os
+    from pathlib import Path as _Path
+
+    p = _Path(source).expanduser()
+    try:
+        resolved = p.resolve()
+    except OSError:
+        resolved = p.absolute()
+    for root in allowed_source_roots():
+        try:
+            rr = root.resolve()
+        except OSError:
+            rr = root.absolute()
+        if resolved == rr or rr in resolved.parents:
+            return p
+    allowed = _os.pathsep.join(str(r) for r in allowed_source_roots())
+    raise PermissionError(
+        f"ingest source outside the allowed roots: {resolved} "
+        f"(set {INGEST_ROOTS_ENV} to extend; allowed: {allowed})"
+    )

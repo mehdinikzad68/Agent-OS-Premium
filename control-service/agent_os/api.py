@@ -42,7 +42,7 @@ from .models import (
     decode_command,
     utc_now,
 )
-from .logging_setup import get_logger, log_event
+from .logging_setup import get_logger, log_event, redact
 from . import discovery
 from .service import ControlService
 
@@ -361,7 +361,7 @@ class AgentOSApi:
         if path.startswith("/api/projects/"):
             return 200, self._remove_project(self._segment(p, 2, "project"))
         if path.startswith("/api/tools/registry/"):
-            return 200, {"removed": self.service.remove_tool(p[3])}
+            return 200, {"removed": self.service.remove_tool(self._segment(p, 3, "tool"))}
         if path.startswith("/api/graphics/"):
             g_id = self._segment(p, 2, "graphic")
             self.service.delete_graphic(g_id)
@@ -491,8 +491,14 @@ class AgentOSApi:
         job_id = self._require_str(body, "job_id")
         expires_at = None
         if body.get("expires_at"):
-            from datetime import datetime
+            from datetime import datetime, timezone
             expires_at = datetime.fromisoformat(body["expires_at"])
+            if expires_at.tzinfo is None:
+                # L1 (B2): a naive ISO string used to be stored naive, so
+                # validate_dispatch's aware `now >= expires_at` raised
+                # TypeError -> a 500 instead of a refusal. Assume UTC, the
+                # convention every other timestamp in this service uses.
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
         scope = None
         if body.get("scope"):
             s = body["scope"]
@@ -621,10 +627,18 @@ class AgentOSApi:
                 "job_id": job_id, "state": job.state.value, "evidence": None,
                 "note": "no persisted evidence for this job",
             }
+        evidence = latest["payload"]["evidence"]
+        if isinstance(evidence, dict):
+            # M2 (B2): serve a redacted copy even for events persisted
+            # before write-side redaction existed.
+            evidence = {
+                k: redact(v) if isinstance(v, str) else v
+                for k, v in evidence.items()
+            }
         return {
             "job_id": job_id,
             "state": job.state.value,
-            "evidence": latest["payload"]["evidence"],
+            "evidence": evidence,
             "event_seq": latest["seq"],
             "ts": latest["ts"],
             "kind": latest["kind"],
@@ -821,6 +835,13 @@ def make_handler(api: AgentOSApi, token: Optional[str]) -> type[BaseHTTPRequestH
     return Handler
 
 
+#: Hosts serve() is willing to bind. M3 (B2, review 2026-10-05): the
+#: loopback promise used to be documentation only - serve() bound whatever
+#: host it was handed, and one --host flag (often paired with --insecure)
+#: defeated both stated boundaries at once.
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
 def serve(
     service: ControlService,
     host: str = "127.0.0.1",
@@ -828,7 +849,11 @@ def serve(
     token: Optional[str] = None,
     insecure: bool = False,
 ) -> ThreadingHTTPServer:
-    """Start a blocking HTTP server. Binds loopback only unless host says otherwise."""
+    """Start a blocking HTTP server. Loopback only - enforced, not assumed."""
+    if host not in LOOPBACK_HOSTS:
+        raise ValueError(
+            f"loopback-only: refusing to bind non-loopback host {host!r}"
+        )
     if token is None and not insecure:
         raise ApiError(
             500, "no_token", "refusing to serve without a token; set AGENT_OS_TOKEN or pass --insecure"

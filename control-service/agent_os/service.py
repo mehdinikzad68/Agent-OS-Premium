@@ -26,7 +26,7 @@ from typing import Optional
 
 from .adapters.fake import FakeExecutor  # noqa: F401  (re-export for tests)
 from . import discovery
-from .logging_setup import get_logger, log_event
+from .logging_setup import get_logger, log_event, redact
 from .paths import (
     REASON_NOT_ABSOLUTE,
     REASON_OK,
@@ -80,12 +80,20 @@ EVENT_EVIDENCE_STRING_LIMIT = 16_384
 
 
 def _bounded_evidence(evidence: dict | None) -> dict:
+    """Bound, then redact, every string before it reaches the event log.
+
+    M2 (B2, review 2026-10-05): evidence is raw executor stdout, so it can
+    carry whatever the command printed - tokens included (F5 demonstrated
+    `password=hunter2` arriving at /evidence). Redaction runs BEFORE
+    truncation so a cut cannot leave half a secret behind.
+    """
     out: dict = {}
     for k, v in (evidence or {}).items():
-        if isinstance(v, str) and len(v) > EVENT_EVIDENCE_STRING_LIMIT:
-            out[k] = v[:EVENT_EVIDENCE_STRING_LIMIT] + "\n...[truncated]"
-        else:
-            out[k] = v
+        if isinstance(v, str):
+            v = redact(v)
+            if len(v) > EVENT_EVIDENCE_STRING_LIMIT:
+                v = v[:EVENT_EVIDENCE_STRING_LIMIT] + "\n...[truncated]"
+        out[k] = v
     return out
 
 
@@ -193,8 +201,16 @@ class ControlService:
         conflate: events were added, the source is readable with nothing new,
         or the source could not be read at all.
         """
-        from .adapters.hermes_ingest import SourceUnavailable, StateReader
+        from .adapters.hermes_ingest import (
+            SourceUnavailable,
+            StateReader,
+            assert_source_allowed,
+        )
 
+        # M1 (B2): the source is caller-supplied; without this the route is
+        # a token-gated arbitrary local SQLite read (git_repo_root leaks
+        # real paths). Outside the allowed roots -> PermissionError -> 403.
+        assert_source_allowed(source_path)
         reader = StateReader(source_path)
         try:
             probe = reader.probe()
@@ -569,10 +585,16 @@ class ControlService:
             raise PermissionError(
                 f"only a human principal may decide approvals (got {principal.value})"
             )
+        if self.store.get_approval(approval_id) is None:
+            # A3 (B2): resolve BEFORE any write. The old order updated 0
+            # rows silently and then hit `assert approval is not None` ->
+            # a 500 (and the assert disappears under python -O).
+            raise KeyError(approval_id)
         now = now or utc_now()
         self.store.update_approval_decision(approval_id, decision, iso(now), principal)
         approval = self.store.get_approval(approval_id)
-        assert approval is not None
+        if approval is None:  # unreachable without a concurrent delete
+            raise KeyError(approval_id)
         if decision is ApprovalDecision.GRANTED:
             self.store.update_job(approval.job_id, state=JobState.APPROVED)
             self.store.record_event(
@@ -742,6 +764,30 @@ class ControlService:
             return DispatchReceipt(
                 job_id=job_id, attempt=attempt, final_state=updated.state
             )
+        except Exception:
+            # A2-fix (B2): anything other than WorkerLostError leaving this
+            # try means the executor could not do its work at all (sandbox
+            # preparation, escaping-link scan, ...). Without this the job
+            # stayed RUNNING forever: A6 then answered duplicated=True for
+            # every retry and reconcile() refuses non-INTERRUPTED states, so
+            # the job became unreachable. FAILED is the honest terminal
+            # state; WorkerLostError stays the explicit "outcome unknown"
+            # channel - an executor that may already have spawned work must
+            # raise that instead.
+            self.store.update_job(job_id, state=JobState.FAILED)
+            self.store.record_event(
+                "dispatch_failed",
+                {"job_id": job_id, "attempt": attempt, "reason": "executor_error"},
+            )
+            log_event(
+                _log,
+                logging.ERROR,
+                "dispatch.executor_error",
+                exc_info=True,
+                job_id=job_id,
+                attempt=attempt,
+            )
+            raise
 
         # A4: claims are verified against required evidence before the state
         # may be called "verified". A missing test report can never pass.
