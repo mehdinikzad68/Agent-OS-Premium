@@ -268,14 +268,18 @@ class RequestLogTest(LoggingTestCase):
 
         db = self.log_dir / "reqlog.db"
         service = ControlService(db)
-        server = serve(service, host="127.0.0.1", port=8790, token="t" * 20, insecure=False)
+        import socket as _socket
+        with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as _s:
+            _s.bind(("127.0.0.1", 0))  # kernel-chosen (B3): no fixed port
+            port = _s.getsockname()[1]
+        server = serve(service, host="127.0.0.1", port=port, token="t" * 20, insecure=False)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         time.sleep(0.3)
         codes = []
         try:
             for path, headers in paths:
                 req = urllib.request.Request(
-                    f"http://127.0.0.1:8790{path}", headers=headers
+                    f"http://127.0.0.1:{port}{path}", headers=headers
                 )
                 try:
                     with urllib.request.urlopen(req, timeout=5) as resp:

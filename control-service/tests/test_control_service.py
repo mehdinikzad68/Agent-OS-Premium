@@ -54,7 +54,10 @@ class ControlServiceTest(unittest.TestCase):
 
     def tearDown(self):
         self.svc.close()
-        shutil.rmtree(TMP, ignore_errors=True)
+        # B3 (F-8): never rmtree the SHARED .testtmp - other files' fixtures
+        # live there. Remove only this class's own database files.
+        for suffix in ("", "-wal", "-shm"):
+            Path(f"{self.db_path}{suffix}").unlink(missing_ok=True)
 
     # -- shared flow ----------------------------------------------------
 

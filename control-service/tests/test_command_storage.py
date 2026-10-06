@@ -264,11 +264,11 @@ class ServiceEncodesAtTheBoundaryTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp(prefix="f8-svc-"))
         self.svc = ControlService(self.tmp / "svc.db")
         self.addCleanup(self.svc.close)
-        self.svc.create_mission("a mission")
+        self.mission = self.svc.create_mission("a mission")
 
     def test_a_direct_list_call_no_longer_raises_a_programming_error(self):
         job = self.svc.record_proposal(
-            "m1", "t", "subprocess-executor", ("w/",), ("run_tests",),
+            self.mission.id, "t", "subprocess-executor", ("w/",), ("run_tests",),
             Principal.PLANNER, command=["python", "-c", "print(1)"],
         )
         loaded = self.svc.store.get_job(job.id)
@@ -276,7 +276,7 @@ class ServiceEncodesAtTheBoundaryTest(unittest.TestCase):
 
     def test_the_stored_value_is_a_string_so_sqlite_accepts_it(self):
         job = self.svc.record_proposal(
-            "m1", "t2", "subprocess-executor", ("w/",), ("run_tests",),
+            self.mission.id, "t2", "subprocess-executor", ("w/",), ("run_tests",),
             Principal.PLANNER, command=["echo", "hi"],
         )
         self.assertIsInstance(job.command, str)
@@ -286,18 +286,18 @@ class ServiceEncodesAtTheBoundaryTest(unittest.TestCase):
         # must not depend on list-vs-string at call time - otherwise a caller
         # switching representation would silently invalidate live approvals.
         a = self.svc.record_proposal(
-            "m1", "same", "subprocess-executor", ("w/",), ("run_tests",),
+            self.mission.id, "same", "subprocess-executor", ("w/",), ("run_tests",),
             Principal.PLANNER, command=["echo", "hi"],
         )
         b = self.svc.record_proposal(
-            "m1", "same", "subprocess-executor", ("w/",), ("run_tests",),
+            self.mission.id, "same", "subprocess-executor", ("w/",), ("run_tests",),
             Principal.PLANNER, command=["echo", "hi"],
         )
         self.assertEqual(a.manifest_hash, b.manifest_hash)
 
     def test_amend_re_encodes_rather_than_storing_the_list(self):
         job = self.svc.record_proposal(
-            "m1", "t3", "subprocess-executor", ("w/",), ("run_tests",),
+            self.mission.id, "t3", "subprocess-executor", ("w/",), ("run_tests",),
             Principal.PLANNER, command=["echo", "before"],
         )
         self.svc.amend_job(job.id, command=["echo", "after"])
@@ -307,7 +307,7 @@ class ServiceEncodesAtTheBoundaryTest(unittest.TestCase):
     def test_amend_invalidates_the_grant_bound_to_the_old_argv(self):
         # The Phase 5 contract, proven: changing the command changes the hash.
         job = self.svc.record_proposal(
-            "m1", "t4", "subprocess-executor", ("w/",), ("run_tests",),
+            self.mission.id, "t4", "subprocess-executor", ("w/",), ("run_tests",),
             Principal.PLANNER, command=["echo", "before"],
         )
         before = job.manifest_hash
@@ -319,7 +319,7 @@ class ServiceEncodesAtTheBoundaryTest(unittest.TestCase):
         # passes None when nothing changed, so update_job skips the column.
         # The stored value must survive that.
         job = self.svc.record_proposal(
-            "m1", "t5", "subprocess-executor", ("w/",), ("run_tests",),
+            self.mission.id, "t5", "subprocess-executor", ("w/",), ("run_tests",),
             Principal.PLANNER, command=["echo", "keep"],
         )
         self.svc.amend_job(job.id, actions=("run_tests", "run_command"))
@@ -337,9 +337,9 @@ class ApiReturnsArgvTest(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp(prefix="f8-api-"))
         svc = ControlService(tmp / "api.db")
         self.addCleanup(svc.close)
-        svc.create_mission("a mission")
+        mission = svc.create_mission("a mission")
         job = svc.record_proposal(
-            "m1", "t", "subprocess-executor", ("w/",), ("run_tests",),
+            mission.id, "t", "subprocess-executor", ("w/",), ("run_tests",),
             Principal.PLANNER, command=["echo", "round trip"],
         )
         self.assertEqual(_job_to_dict(job)["command"], ["echo", "round trip"])
@@ -352,9 +352,9 @@ class ApiReturnsArgvTest(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp(prefix="f8-legacy-"))
         svc = ControlService(tmp / "legacy.db")
         self.addCleanup(svc.close)
-        svc.create_mission("a mission")
+        mission = svc.create_mission("a mission")
         job = svc.record_proposal(
-            "m1", "t", "subprocess-executor", ("w/",), ("run_tests",),
+            mission.id, "t", "subprocess-executor", ("w/",), ("run_tests",),
             Principal.PLANNER, command=["echo", "ok"],
         )
         # Simulate a pre-fix row by writing raw text over the column.

@@ -637,6 +637,11 @@ class Store:
                     )
                 return True
             except sqlite3.IntegrityError:
+                if dedup_key is None:
+                    # B3: only a dedup_key conflict may be called a
+                    # "duplicate". A NOT NULL or other schema break must
+                    # surface, not be silently reported as a harmless replay.
+                    raise
                 return False
 
     def list_events(self) -> list[dict]:

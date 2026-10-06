@@ -1,7 +1,8 @@
-"""Mutation check: remove --network none and confirm p6_proof.py goes red.
+"""Mutation check: remove the --user 1000:1000 flag and confirm p6_proof red.
 
 A proof that cannot fail proves nothing. This temporarily removes the
---network none flag from container_executor.py, runs the proof, and restores
+--user 1000:1000 flag (dropping the container to root) from
+container_executor.py, runs the proof, and restores
 the file byte-for-byte. If the proof still passed, it would be asserting
 something the code does for an unrelated reason.
 """
@@ -12,20 +13,20 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent
 EXECUTOR = ROOT / "agent_os/adapters/container_executor.py"
 
-# The security flag we will remove
+# The security flag: runs the command as non-root (p6_proof PASS 9)
 FLAG = '''            "--user", "1000:1000",'''
 
 original = EXECUTOR.read_text(encoding="utf-8")
 assert FLAG in original, "security flag not found; the proof targets the wrong code"
 
 try:
-    # Remove the --read-only flag
+    # Remove the --user flag (the container then runs as root)
     mutated = original.replace(FLAG, "")
     EXECUTOR.write_text(mutated, encoding="utf-8")
     
     r = subprocess.run([sys.executable, "-B", "p6_proof.py"],
                        cwd=str(ROOT), capture_output=True, text=True, timeout=120)
-    print("--- proof with --read-only REMOVED ---")
+    print("--- proof with --user 1000:1000 REMOVED ---")
     print(r.stdout.strip())
     print("exit code:", r.returncode)
     if r.returncode == 0:

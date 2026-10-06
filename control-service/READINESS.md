@@ -34,7 +34,7 @@ registration path contains no `subprocess`, `Popen`, `docker`, `mount` or
 
 | Capability | How it is verified | Result |
 |---|---|---|
-| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **640/640** pass on Python 3.14.4 (WSL) |
+| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **643/643** pass on Python 3.14.4 (WSL) |
 | Full product flow over real HTTP | `e2e_verify.py` | PASS |
 | UI structural integrity + handler wiring | `check_ui.py` | pass |
 | Token auth fail-closed; loopback bind **enforced** (serve() refuses other hosts) | `tests/test_api.py` + `tests/test_api_edge_cases.py` | pass |
@@ -71,7 +71,7 @@ Reproduce (all must exit 0):
 
 ```bash
 cd control-service
-python3 -B -m unittest discover -s tests -t .   # 640 tests
+python3 -B -m unittest discover -s tests -t .   # 643 tests
 python3 -B e2e_verify.py                        # 11 steps
 python3 -B check_ui.py
 python3 -B p5_proof.py                          # Phase 5: single-use, over real HTTP
@@ -213,6 +213,9 @@ not by turning a retry into an error.
 - `keep_workspace=True` has no retention ceiling. Nothing bounds how many
   sandboxes can accumulate; this is a known gap, deliberately not filled in
   with an invented policy.
+- `Project.read_only` is shown as a UI badge but is **not enforced**
+  anywhere: declared-True, never consulted by an executor. The badge is
+  a statement about intent, not a boundary (B3, review 2026-10-05).
 - Test-signal detection is heuristic (`agent_os/evidence.py`:
   `detect_test_report` - one helper shared by both executors since B2): a
   command that

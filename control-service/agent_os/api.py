@@ -61,10 +61,6 @@ def unregister_executor(name: str) -> None:
     _EXECUTORS.pop(name, None)
 
 
-def _iso_or_none(value) -> Optional[str]:
-    return value if value is not None else None
-
-
 def _job_to_dict(job: Job) -> dict:
     # `command` is stored as canonical JSON argv. Hand the caller back the argv
     # they sent, not the storage encoding: the API accepts a list, so it should
@@ -125,7 +121,7 @@ def _approval_to_dict(approval: Approval) -> dict:
         "requested_at": approval.requested_at,
         "decided_at": approval.decided_at,
         "decided_by": approval.decided_by.value if approval.decided_by else None,
-        "expires_at": _iso_or_none(
+        "expires_at": (
             approval.expires_at.isoformat() if approval.expires_at else None
         ),
         "manifest_hash": approval.manifest_hash,

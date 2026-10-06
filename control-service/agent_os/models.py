@@ -255,6 +255,8 @@ class Project:
     root: str
     canonical_root: str
     is_symlink: bool
+    #: Displayed by the UI badge. Declared, NOT enforced - no executor
+    #: reads it (B3 note, review 2026-10-05).
     read_only: bool
     created_at: str
 

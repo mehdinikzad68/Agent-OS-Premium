@@ -16,7 +16,9 @@ This proof:
 7. Verifies the command could NOT read a host file outside the workspace
 
 Run with the security flags present -> PASS.
-Run with --network none removed -> the network test would fail.
+Run with --user 1000:1000 removed (p6_mutation_check.py) -> PASS 9 fails.
+Network isolation is proven separately, by
+tests/test_container_boundary.py::test_cannot_access_network.
 That is what makes it a proof and not a tautology.
 """
 

@@ -219,10 +219,6 @@ class SourceStateTest(unittest.TestCase):
             StateReader(str(self.tmp / "gone.db")).probe()
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class LocklessMountTest(unittest.TestCase):
     """The profile lives on a Windows drive reached from WSL.
 
@@ -322,3 +318,7 @@ class DefaultPathTest(unittest.TestCase):
         p = default_profile_db("no-such-profile-xyz")
         with self.assertRaises(SourceUnavailable):
             StateReader(p).probe()
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

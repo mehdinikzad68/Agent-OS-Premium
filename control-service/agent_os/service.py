@@ -438,6 +438,12 @@ class ControlService:
     ) -> Job:
         if proposed_by not in (Principal.PLANNER, Principal.HUMAN):
             raise PermissionError("proposals come from planner or human only")
+        if self.store.get_mission(mission_id) is None:
+            # B3 (review 2026-10-05): application-level referential check.
+            # The schema declares no FOREIGN KEY (the pragma in store.py is
+            # otherwise dead), so without this a job could reference a
+            # mission that never existed. KeyError -> HTTP 404.
+            raise KeyError(mission_id)
         now = now or utc_now()
         # Encode HERE, not at the HTTP edge. The HTTP layer validates the
         # shape, but record_proposal is also called directly (tests, CLI,
@@ -760,7 +766,11 @@ class ControlService:
                 attempt=attempt,
             )
             updated = self.store.get_job(job_id)
-            assert updated is not None
+            if updated is None:
+                raise RuntimeError(
+                    f"job {job_id} vanished from the store on the "
+                    "worker-lost path (no delete path exists)"
+                )
             return DispatchReceipt(
                 job_id=job_id, attempt=attempt, final_state=updated.state
             )
@@ -825,7 +835,11 @@ class ControlService:
                  "evidence": _bounded_evidence(outcome.evidence)},
             )
         updated = self.store.get_job(job_id)
-        assert updated is not None
+        if updated is None:
+            raise RuntimeError(
+                f"job {job_id} vanished from the store after dispatch "
+                "(no delete path exists)"
+            )
         return DispatchReceipt(
             job_id=job_id, attempt=attempt, final_state=updated.state
         )
@@ -864,7 +878,10 @@ class ControlService:
             "reconciled", {"job_id": job_id, "final_state": final_state.value, "note": note}
         )
         result = self.store.get_job(job_id)
-        assert result is not None
+        if result is None:
+            raise RuntimeError(
+                f"job {job_id} vanished during reconcile (no delete path exists)"
+            )
         return result
 
     # ------------------------------------------------------------------

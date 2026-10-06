@@ -34,7 +34,7 @@ python3 -m agent_os.cli serve --db mission-control.db
 
 ```bash
 cd control-service
-python3 run_tests.py     # 640 tests -> .test-results.txt (exit 0 = pass)
+python3 run_tests.py     # 643 tests -> .test-results.txt (exit 0 = pass)
 python3 e2e_verify.py    # 11-step product verification over real HTTP
 python3 check_ui.py      # UI structural validation
 ```
