@@ -13,7 +13,8 @@ restored order it comes from policy check 9 (validate_dispatch). Either way the
 ACTION must not run twice - which is the property that matters.
 
 Run with the check present -> PASS.
-Run with check 9 removed from policy.py -> the second dispatch would execute,
+Run p5_mutation_check.py (policy check 9 AND the dispatch consume gate
+removed) -> the second dispatch would execute,
 so the proof can fail. That is what makes it a proof and not a tautology.
 """
 import pathlib

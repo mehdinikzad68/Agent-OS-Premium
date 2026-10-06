@@ -34,13 +34,19 @@ registration path contains no `subprocess`, `Popen`, `docker`, `mount` or
 
 | Capability | How it is verified | Result |
 |---|---|---|
-| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **618/618** pass on Python 3.14.4 (WSL) |
+| Enforcement rules A1–A13 + CLI gates | `python3 -B -m unittest discover -s tests -t .` | **640/640** pass on Python 3.14.4 (WSL) |
 | Full product flow over real HTTP | `e2e_verify.py` | PASS |
 | UI structural integrity + handler wiring | `check_ui.py` | pass |
-| Token auth fail-closed, loopback bind | `tests/test_api.py` | pass |
+| Token auth fail-closed; loopback bind **enforced** (serve() refuses other hosts) | `tests/test_api.py` + `tests/test_api_edge_cases.py` | pass |
 | UI shell public / API protected | `tests/test_api.py::UiServingTest` | pass |
 | Durable evidence in event log + `/api/jobs/{id}/evidence` | `test_evidence_*` + E2E | pass |
 | Oversized request bodies refused (413) | `test_oversized_body_rejected` | pass |
+| **A broken executor ends the job `FAILED`, never stuck `RUNNING`** | `test_executor_failure_recovery.py` (3 tests) | pass |
+| Naive `expires_at` normalised; absent ids answer 404, not 500 | `test_api_edge_cases.py` | pass |
+| **Loopback is enforced, not just documented** (`serve()` refuses other hosts; CLI exits 2) | `test_api_edge_cases.py` + `test_cli.py` | pass |
+| **Ingest sources are allowlisted** (env + Hermes roots; `..`/symlink-proof) | `test_ingest_allowlist.py` (4) + `test_ingest_api.py` 403 | pass |
+| **Evidence (executor stdout) is redacted on write and on read** | `test_evidence_redaction.py` (2 tests) | pass |
+| Test-signal detection: one shared helper, framework summaries first | `test_evidence_detection.py` (6 tests) | pass |
 | Durable state across restarts | A1 test + E2E | pass |
 | Deny-before-dispatch (expired / destination / manifest / tools) | A2/A3 tests + E2E | pass |
 | Idempotent dispatch + event dedup | A6 test + E2E | pass |
@@ -65,7 +71,7 @@ Reproduce (all must exit 0):
 
 ```bash
 cd control-service
-python3 -B -m unittest discover -s tests -t .   # 618 tests
+python3 -B -m unittest discover -s tests -t .   # 640 tests
 python3 -B e2e_verify.py                        # 11 steps
 python3 -B check_ui.py
 python3 -B p5_proof.py                          # Phase 5: single-use, over real HTTP
@@ -207,7 +213,9 @@ not by turning a retry into an error.
 - `keep_workspace=True` has no retention ceiling. Nothing bounds how many
   sandboxes can accumulate; this is a known gap, deliberately not filled in
   with an invented policy.
-- Test-signal detection is heuristic (`_detect_test_report`): a command that
+- Test-signal detection is heuristic (`agent_os/evidence.py`:
+  `detect_test_report` - one helper shared by both executors since B2): a
+  command that
   prints a passing-looking line can produce a "test report". Treat verified
   state as *"claimed and plausible"*, not proof — real adapters must supply
   structured reports.

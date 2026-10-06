@@ -34,7 +34,7 @@ python3 -m agent_os.cli serve --db mission-control.db
 
 ```bash
 cd control-service
-python3 run_tests.py     # 618 tests -> .test-results.txt (exit 0 = pass)
+python3 run_tests.py     # 640 tests -> .test-results.txt (exit 0 = pass)
 python3 e2e_verify.py    # 11-step product verification over real HTTP
 python3 check_ui.py      # UI structural validation
 ```
@@ -76,7 +76,7 @@ CLI / scripts ───────┼─> HTTP API (token, loopback) ─> Contr
 | A5 | Lost worker = `interrupted/unknown` until human reconcile; no auto-rerun |
 | A6 | Duplicate dispatch / event replay = zero duplicate actions |
 | A7 | Knowledge edit on stale revision raises conflict |
-| A8 | Token auth fail-closed; loopback-only; UI shell public, API protected |
+| A8 | Token auth fail-closed; loopback-only (**enforced** by serve()); UI shell public, API protected |
 | A9 | Disposable workspace executor: never touches source, timeout = not success |
 | A10 | Evidence durable in event log + served by API; oversized bodies refused (413) |
 | A11 | Approval is **single-use**: spent atomically on first dispatch |

@@ -7,7 +7,7 @@ web dashboard. Zero dependencies — Python standard library only.
 > **Status: locally testable product, single-user, pre-integration.**
 > The dashboard, API, approval enforcement, subprocess executor, durable
 > evidence and honest event ingestion are implemented and tested
-> (618 unit tests + 11-step E2E, green). Hermes/DSH/Antigravity are **not yet
+> (640 unit tests + 11-step E2E, green). Hermes/DSH/Antigravity are **not yet
 > integrated** (separately gated by design).
 > Honest limits: see [READINESS.md](READINESS.md).
 
@@ -26,11 +26,11 @@ token unless `--insecure` is passed (dev only).
 
 ## Verify a release
 
-```bat
+```bash
 cd control-service
-C:\...\Python314\python.exe run_tests.py      :: 449 tests -> .test-results.txt
-C:\...\Python314\python.exe e2e_verify.py     :: 11-step product E2E -> e2e-result.txt
-C:\...\Python314\python.exe check_ui.py       :: UI structural validation
+python3 run_tests.py      # 640 tests -> .test-results.txt
+python3 e2e_verify.py     # 11-step product E2E -> e2e-result.txt
+python3 check_ui.py       # UI structural validation
 ```
 
 Both write file-based results (sandbox-safe). Exit code 0 = pass.
@@ -90,7 +90,7 @@ agent_os/
   adapters/fake.py        scriptable fake executor (tests/enforcement)
   adapters/subprocess_executor.py   real gated executor, disposable workspace
   web/index.html          single-file RTL dashboard (offline, no CDN)
-tests/                    618 tests (A1–A13 + CLI gates)
+tests/                    640 tests (A1–A13 + CLI gates)
 tests/live_server.py      shared harness: OS-chosen port, identity-checked readiness
 run_tests.py              file-writing test runner (sandbox-safe)
 e2e_verify.py             11-step product verification over real HTTP
