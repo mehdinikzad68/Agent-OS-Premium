@@ -35,3 +35,7 @@ Thumbs.db
 # Structured logs (Phase 1 logging step) — regenerated at runtime, never committed
 .logs/
 sandboxes/
+
+# Dashboard build artifacts and dependencies
+dashboard/node_modules/
+dashboard/dist/

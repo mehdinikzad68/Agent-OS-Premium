@@ -1,0 +1,28 @@
+/* ==========================================================
+   Neural Command Design System - Canonical CSS Tokens
+   Directly extracted from:
+   - docs/UI-Design/agent-os-neural-command-robot.html
+   - control-service/agent_os/web/index.html
+   ========================================================== */
+:root {
+  /* 14 Canonical Color Tokens */
+  --bg: #02070f;
+  --tx: #e4f6ff;
+  --mu: #8eaec2;
+  --line: rgba(110, 215, 255, .15);
+  --sun: #38e8ff;
+  --sun2: #b8f6ff;
+  --run: #4fd6ff;
+  --await: #ff9a52;
+  --ok: #5ff0a8;
+  --off: #6b7fa6;
+  --bad: #ff5c7a;
+  --mag: #c77dff;
+  --code-bg: rgba(0, 0, 0, .55);
+
+  /* Typography Fallbacks (No CDN, Local/System Fallbacks) */
+  --disp: "Chakra Petch", "Segoe UI", Tahoma, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-fa: "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+  --font-en: "Hind", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
