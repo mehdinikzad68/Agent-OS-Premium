@@ -1,10 +1,11 @@
 // Approval gate (minified names in bundle: hx = Gate, xx = GateBody).
 import { useEffect, useRef, useState } from "react";
 import { Check, EyeOff, ShieldAlert, TriangleAlert, X } from "lucide-react";
+import { APPROVER } from "../data";
 
 const HOLD_MS = 1200;
 
-export default function Gate({ approvals, t, lang, decide }) {
+export default function Gate({ approvals, t, lang, decide, dataSource }) {
   const [idx, setIdx] = useState(0);
   const cur = approvals[Math.min(idx, approvals.length - 1)];
   return (
@@ -12,6 +13,7 @@ export default function Gate({ approvals, t, lang, decide }) {
       <div className="flex items-center gap-2.5 border-b border-[var(--line)] px-5 py-4">
         <ShieldAlert size={20} className={cur ? "text-[var(--await)]" : "text-[var(--ok)]"} />
         <h2 className="disp text-[22px] leading-none">{t.gate}</h2>
+        {dataSource === "demo" && <span className="rounded border border-[var(--await)] bg-[rgba(255,154,82,.1)] px-1.5 py-0.5 text-[10px] text-[var(--await)] tracking-widest">{t.demoData || "Demo"}</span>}
         <span className="mono ms-auto text-[14px] text-[var(--await)]">{approvals.length}</span>
         <span className="text-[14px] text-[var(--mu)]">{t.queue}</span>
       </div>
@@ -33,7 +35,7 @@ export default function Gate({ approvals, t, lang, decide }) {
         </div>
       )}
       {cur ? (
-        <GateBody
+        <GateBody dataSource={dataSource}
           key={cur.id}
           g={cur}
           t={t}
@@ -61,7 +63,7 @@ export default function Gate({ approvals, t, lang, decide }) {
   );
 }
 
-export function GateBody({ g, t, lang, decide }) {
+export function GateBody({ g, t, lang, decide, dataSource }) {
   const [hold, setHold] = useState(0);
   const raf = useRef();
   const t0 = useRef(0);
@@ -145,7 +147,7 @@ export function GateBody({ g, t, lang, decide }) {
       </div>
       <div className="mt-auto flex items-center gap-2.5 text-[14px]">
         <span className="text-[var(--mu)]">{t.approver}</span>
-        <span>Martin Sanchez</span>
+        <span>{APPROVER.name}</span>
       </div>
       <div className="grid grid-cols-2 gap-3">
         {g.tier === 3 ? (
@@ -161,6 +163,7 @@ export function GateBody({ g, t, lang, decide }) {
             <span className="relative flex items-center justify-center gap-2" style={{ color: hold > 0.5 ? "#00222c" : undefined }}>
               <Check size={17} />
               {t.hold}
+              {dataSource === "demo" && <span className="ms-2 text-[10px] opacity-75">({t.simulated || "Simulated"})</span>}
             </span>
           </button>
         ) : (
@@ -171,6 +174,7 @@ export function GateBody({ g, t, lang, decide }) {
           >
             <Check size={17} />
             {t.approve}
+            {dataSource === "demo" && <span className="ms-1 text-[10px] opacity-75">({t.simulated || "Simulated"})</span>}
           </button>
         )}
         <button
@@ -180,6 +184,7 @@ export function GateBody({ g, t, lang, decide }) {
         >
           <X size={17} />
           {t.reject}
+          {dataSource === "demo" && <span className="ms-1 text-[10px] opacity-75">({t.simulated || "Simulated"})</span>}
         </button>
       </div>
     </div>

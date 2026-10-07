@@ -4,6 +4,17 @@
 export const T = {
   en: {
     brand: "Agent OS",
+    stale: "Stale",
+    token_required: "Token Required",
+    forbidden: "Forbidden",
+    unavailable: "Unavailable",
+    disconnected: "Disconnected",
+    demo: "Demo",
+    demoData: "Demo data",
+    simulated: "Simulated",
+    connecting: "Connecting...",
+    connected: "Connected",
+
     section: "Mission Control",
     live: "Live",
     mission: "Mission",
@@ -70,6 +81,17 @@ export const T = {
   },
   fa: {
     brand: "Agent OS",
+    stale: "قدیمی",
+    token_required: "نیاز به توکن",
+    forbidden: "غیرمجاز",
+    unavailable: "خارج از دسترس",
+    disconnected: "قطع",
+    demo: "آزمایشی",
+    demoData: "داده آزمایشی",
+    simulated: "شبیه‌سازی",
+    connecting: "درحال اتصال...",
+    connected: "متصل",
+
     section: "مرکز فرماندهی مأموریت",
     live: "زنده",
     mission: "مأموریت",

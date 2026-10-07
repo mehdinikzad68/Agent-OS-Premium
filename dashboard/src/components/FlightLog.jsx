@@ -10,7 +10,7 @@ const EVENT_ICONS = { add: Plus, remove: Trash2, code: CodeXml, box: Box, db: Da
 export const evColor = (ev, agents) =>
   ev.c || (ev.bad ? "#ff5c7a" : ev.agent === "hermes" ? SUN : STATUS_COLOR[agents.find((a) => a.id === ev.agent)?.status || "running"]);
 
-export default function FlightLog({ t, lang, history, agents, cursor, setCursor, playing, setPlaying }) {
+export default function FlightLog({ t, lang, history, agents, cursor, setCursor, playing, setPlaying, dataSource }) {
   const listRef = useRef();
 
   useEffect(() => {
@@ -23,6 +23,7 @@ export default function FlightLog({ t, lang, history, agents, cursor, setCursor,
     <section className="glass p-4 lg:col-span-2">
       <div className="flex items-center gap-3 px-1">
         <h2 className="disp text-[22px] leading-none">{t.history}</h2>
+        {dataSource === "demo" && <span className="rounded border border-[var(--await)] bg-[rgba(255,154,82,.1)] px-1.5 py-0.5 text-[10px] text-[var(--await)] tracking-widest">{t.demoData || "Demo"}</span>}
         <span className="ms-auto flex items-center gap-2 text-[14px] text-[var(--sun)]">
           <i className="dotlive h-2 w-2 rounded-full bg-[var(--sun)] text-[var(--sun)]" />
           {t.live}

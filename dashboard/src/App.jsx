@@ -1,10 +1,11 @@
 // Minified name in bundle: Fs.
 import { useEffect, useMemo, useState } from "react";
 import { Brain, Cable, Check, Crosshair, Search, SlidersHorizontal, X } from "lucide-react";
-import { AGENTS, APPROVALS, HISTORY, LINKS, T } from "./data.js";
+import { AGENTS, APPROVALS, HISTORY, LINKS, T, DATA_SOURCE } from "./data.js";
 import { STATUS_COLOR, SUN } from "./scene/colors.js";
 import NeuralScene from "./scene/NeuralScene.jsx";
 import Header from "./components/Header.jsx";
+import { useConnection } from "./connection/ConnectionProvider.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import StatusCard from "./components/StatusCard.jsx";
 import Gate from "./components/Gate.jsx";
@@ -34,6 +35,7 @@ const hhmm = () => {
 };
 
 export default function App() {
+  const { state: connState } = useConnection();
   const [lang, setLang] = useState("fa");
   const t = T[lang];
   const rtl = lang === "fa";
@@ -153,13 +155,15 @@ export default function App() {
     <div dir={rtl ? "rtl" : "ltr"} className={`deck text-[15px] ${rtl ? "f-fa" : "f-en"}`}>
       <Header t={t} lang={lang} setLang={setLang} />
       <div className="grid grid-cols-1 gap-4 p-4 [&>*]:min-w-0 lg:grid-cols-[210px_1fr_370px] lg:grid-rows-[minmax(700px,1fr)_auto]">
-        <Sidebar t={t} />
+                <Sidebar t={t} />
+
         <section className="glass hud-frame relative flex min-h-[700px] flex-col overflow-hidden">
           <div className="relative z-10 flex flex-wrap items-end gap-x-4 gap-y-1 px-6 pt-5">
             <h2 className="disp text-[32px] leading-none text-[var(--sun2)]" style={{ textShadow: "0 0 18px rgba(56,232,255,.45)" }}>
               {t.graph}
             </h2>
-            <span className="pb-0.5 text-[15px] text-[var(--mu)]">{t.graphSub}</span>
+                        <span className="pb-0.5 text-[15px] text-[var(--mu)]">{t.graphSub}</span>
+            {DATA_SOURCE === "demo" && <span className="ms-2 rounded border border-[var(--await)] bg-[rgba(255,154,82,.1)] px-2 py-0.5 text-[11px] text-[var(--await)] tracking-widest uppercase">{t.demoData || "Demo data"}</span>}
             <span className="mono ms-auto pb-0.5 text-[14px] text-[var(--mu)]">wp-bioscentiran</span>
           </div>
           <div className="relative z-10 flex flex-wrap gap-2 px-6 pt-4">
@@ -249,11 +253,8 @@ export default function App() {
             </div>
           </div>
         </section>
-        <Gate approvals={approvals} t={t} lang={lang} decide={decide} />
-        <FlightLog
-          t={t}
-          lang={lang}
-          history={history}
+        <Gate approvals={approvals} t={t} lang={lang} decide={decide} dataSource={DATA_SOURCE} />
+        <FlightLog dataSource={DATA_SOURCE} t={t} lang={lang} history={history}
           agents={agents}
           cursor={cursor}
           setCursor={(c) => {

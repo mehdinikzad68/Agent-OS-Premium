@@ -1,3 +1,6 @@
+export const DATA_SOURCE = "demo";
+export const APPROVER = { name: "AIMatrixPedia", initials: "AM" };
+
 // Static demo data (minified names in bundle: Bc, Ec, Nc, Oc, Uc).
 // Values copied verbatim from the bundle.
 
