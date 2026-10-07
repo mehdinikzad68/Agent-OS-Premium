@@ -1,0 +1,289 @@
+@import"https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Hind:wght@400;500;600&family=Vazirmatn:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap";
+
+/*
+  Optional self-hosted fonts. To go fully offline, drop the WOFF2 files into
+  /public/fonts/ and uncomment this block (keep or remove the @import above).
+  Weights match the Google Fonts request exactly.
+
+@font-face { font-family: "Chakra Petch"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/chakra-petch-500.woff2") format("woff2"); }
+@font-face { font-family: "Chakra Petch"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/chakra-petch-600.woff2") format("woff2"); }
+@font-face { font-family: "Chakra Petch"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/chakra-petch-700.woff2") format("woff2"); }
+@font-face { font-family: "Hind"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/hind-400.woff2") format("woff2"); }
+@font-face { font-family: "Hind"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/hind-500.woff2") format("woff2"); }
+@font-face { font-family: "Hind"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/hind-600.woff2") format("woff2"); }
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/vazirmatn-400.woff2") format("woff2"); }
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/vazirmatn-500.woff2") format("woff2"); }
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/vazirmatn-600.woff2") format("woff2"); }
+@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/vazirmatn-700.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/jetbrains-mono-400.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/jetbrains-mono-500.woff2") format("woff2"); }
+*/
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---- Custom CSS (values copied verbatim from the compiled bundle) ---- */
+
+html,body {
+  height:100%;
+}
+
+body {
+  margin:0;
+  background:#02070f;
+}
+
+#root {
+  height:100dvh;
+  overflow:auto;
+}
+
+:root {
+  --bg:#02070f;
+  --tx:#e4f6ff;
+  --mu:#8eaec2;
+  --line:rgba(110,215,255,.15);
+  --sun:#38e8ff;
+  --sun2:#b8f6ff;
+  --run:#4fd6ff;
+  --await:#ff9a52;
+  --ok:#5ff0a8;
+  --off:#6b7fa6;
+  --bad:#ff5c7a;
+  --mag:#c77dff;
+}
+
+.deck {
+  min-height:100vh;
+  color:var(--tx);
+  background:radial-gradient(60% 40% at 80% 6%,rgba(56,232,255,.08),transparent 70%),radial-gradient(50% 50% at 8% 92%,rgba(199,125,255,.1),transparent 70%),var(--bg);
+}
+
+.glass {
+  background:linear-gradient(180deg,#0a1e30b8,#040e1acc);
+  border:1px solid var(--line);
+  border-radius:18px;
+  box-shadow:0 20px 60px -30px #000c,inset 0 1px #a0f0ff0f;
+  /* autoprefixer: ignore next */
+  backdrop-filter:blur(14px);
+}
+
+.glass-flare {
+  border-color:#ff9a5259;
+  box-shadow:0 0 50px -24px #ff9a528c,inset 0 1px #ffffff0a;
+}
+
+.disp {
+  font-family:Chakra Petch,sans-serif;
+  font-weight:600;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+
+.f-fa .disp {
+  font-family:Vazirmatn,sans-serif;
+  font-weight:700;
+  letter-spacing:0;
+  text-transform:none;
+}
+
+.mono {
+  font-family:JetBrains Mono,monospace;
+}
+
+.f-fa {
+  font-family:Vazirmatn,Hind,sans-serif;
+}
+
+.f-en {
+  font-family:Hind,system-ui,sans-serif;
+}
+
+.hud-frame {
+  position:relative;
+}
+
+.hud-frame:before,.hud-frame:after {
+  content:"";
+  position:absolute;
+  width:22px;
+  height:22px;
+  border:2px solid rgba(56,232,255,.55);
+  pointer-events:none;
+  z-index:5;
+}
+
+.hud-frame:before {
+  top:10px;
+  left:10px;
+  border-right:0;
+  border-bottom:0;
+  border-radius:6px 0 0;
+}
+
+.hud-frame:after {
+  bottom:10px;
+  right:10px;
+  border-left:0;
+  border-top:0;
+  border-radius:0 0 6px;
+}
+
+.core-tag {
+  white-space:nowrap;
+  font-size:14px;
+  color:var(--sun2);
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  text-shadow:0 0 12px rgba(56,232,255,.8),0 1px 6px #000;
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+
+.core-tag em {
+  font-family:Chakra Petch,sans-serif;
+  font-style:normal;
+  font-weight:700;
+  font-size:20px;
+  letter-spacing:.08em;
+  color:#effdff;
+}
+
+.f-fa .core-tag {
+  letter-spacing:0;
+}
+
+.cmd-tag {
+  white-space:nowrap;
+  font-size:12.5px;
+  letter-spacing:.06em;
+  text-shadow:0 0 10px currentColor,0 1px 4px #000;
+}
+
+.node-label {
+  white-space:nowrap;
+  line-height:1.25;
+  text-shadow:0 1px 8px #000,0 0 2px #000;
+}
+
+.node-label b {
+  display:block;
+  font-family:Chakra Petch,sans-serif;
+  font-size:15px;
+  font-weight:600;
+  letter-spacing:.05em;
+  color:#f1fbff;
+}
+
+.node-label small {
+  display:block;
+  font-size:14px;
+  color:#a9c6d6;
+}
+
+.node-label .st {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  font-size:14px;
+}
+
+.node-label .st i {
+  width:6px;
+  height:6px;
+  border-radius:9px;
+}
+
+.dotlive {
+  position:relative;
+}
+
+.dotlive:after {
+  content:"";
+  position:absolute;
+  inset:-4px;
+  border-radius:99px;
+  border:1px solid currentColor;
+  animation:ping 2s ease-out infinite;
+}
+
+@keyframes ping {
+  0% {
+    opacity:.8;
+    transform:scale(.6);
+  }
+  to {
+    opacity:0;
+    transform:scale(1.8);
+  }
+}
+
+.rise {
+  animation:rise .45s cubic-bezier(.2,.8,.2,1) both;
+}
+
+@keyframes rise {
+  0% {
+    opacity:0;
+    transform:translateY(8px);
+  }
+  to {
+    opacity:1;
+    transform:none;
+  }
+}
+
+.chip {
+  border:1px solid var(--line);
+  border-radius:999px;
+  padding:6px 12px;
+  font-size:14px;
+  transition:all .2s;
+}
+
+.chip[data-on=true] {
+  border-color:#38e8ffb3;
+  background:#38e8ff1f;
+  color:#e6fdff;
+}
+
+.field {
+  width:100%;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:#020a14b3;
+  padding:9px 12px;
+  font-size:15px;
+  outline:none;
+  color:var(--tx);
+}
+
+.field:focus {
+  border-color:#38e8ff99;
+}
+
+.scroll::-webkit-scrollbar {
+  height:6px;
+  width:6px;
+}
+
+.scroll::-webkit-scrollbar-thumb {
+  background:#6ed7ff33;
+  border-radius:9px;
+}
+
+.navi {
+  transition:background .2s,color .2s;
+}
+
+.navi:hover {
+  color:#fff!important;
+}
+
+.btn-core {
+  background:linear-gradient(180deg,#9af7ff,#1fc6e6);
+  color:#00222c;
+  box-shadow:0 0 24px -6px #38e8ffcc;
+}
