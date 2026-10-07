@@ -1,320 +1,598 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent OS — Mission Control</title>
-<script src="/three.min.js"></script>
 <style>
+  /* ==========================================================
+     Neural Command design system — ported from
+     docs/UI-Design/agent-os-neural-command-robot.html
+     (fonts degrade to local stacks: the console must stay offline)
+     ========================================================== */
   :root {
-    --bg: #06050f; --panel: rgba(22, 17, 46, 0.65); --panel2: rgba(12, 9, 28, 0.72); --panel-active: rgba(22, 17, 46, 0.9);
-    --border: rgba(196,178,255,.14); --border-focus: #7cc8ff;
-    --text: #efe9ff; --text-bright: #ffffff; --muted: #a79ecb;
-    --accent: #7cc8ff; --ok: #86e8a8; --warn: #ff9a52; --bad: #ff6b81; --info: #a79ecb;
-    --code-bg: rgba(0,0,0,0.5);
+    --bg: #02070f; --tx: #e4f6ff; --mu: #8eaec2;
+    --line: rgba(110, 215, 255, .15);
+    --sun: #38e8ff; --sun2: #b8f6ff;
+    --run: #4fd6ff; --await: #ff9a52; --ok: #5ff0a8;
+    --off: #6b7fa6; --bad: #ff5c7a; --mag: #c77dff;
+    --code-bg: rgba(0, 0, 0, .55);
+    --disp: "Chakra Petch", "Segoe UI", Tahoma, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
-  .card, .top-bar { backdrop-filter: blur(14px); box-shadow: 0 20px 60px -30px rgba(0,0,0,0.7), inset 0 1px rgba(255,255,255,0.04); background: linear-gradient(180deg, var(--panel), var(--panel2)); }
-  body { background: radial-gradient(60% 40% at 78% 8%,rgba(255,150,80,.1),transparent 70%),radial-gradient(50% 50% at 10% 90%,rgba(120,70,220,.18),transparent 70%),radial-gradient(40% 30% at 50% 50%,rgba(255,170,90,.05),transparent 70%),var(--bg); }
-  .nebula { position:fixed; inset:0; pointer-events:none; z-index:-2; overflow:hidden; }
-  .nebula:before { content:""; position:absolute; left:-20%; right:-20%; top:20%; height:60%; transform:rotate(-24deg); background:radial-gradient(40% 30% at 30% 50%,rgba(255,205,150,.13),transparent 70%),radial-gradient(35% 26% at 62% 46%,rgba(206,130,255,.14),transparent 70%),radial-gradient(60% 18% at 50% 52%,rgba(255,235,210,.07),transparent 70%),radial-gradient(30% 10% at 45% 54%,rgba(10,6,20,.55),transparent 80%); filter:blur(12px); animation:drift 60s ease-in-out infinite alternate; }
-  @keyframes drift{to{transform:rotate(-20deg) translate(3%)}}
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; font-family: system-ui, "Segoe UI", Tahoma, sans-serif;
-    background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5;
+    margin: 0; color: var(--tx); font-size: 15px; line-height: 1.5;
+    font-family: Hind, system-ui, "Segoe UI", Tahoma, sans-serif;
   }
-  .top-bar {
-    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
-    background: var(--panel); border-bottom: 1px solid var(--border);
-    position: sticky; top: 0; z-index: 10; flex-wrap: wrap;
+  [hidden] { display: none !important; }
+  :focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
+  .f-fa { font-family: Vazirmatn, Hind, Tahoma, sans-serif; }
+  .f-en { font-family: Hind, system-ui, sans-serif; }
+  .disp { font-family: var(--disp); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .f-fa .disp, .disp.f-fa { font-family: Vazirmatn, Tahoma, sans-serif; font-weight: 700; letter-spacing: 0; text-transform: none; }
+  .mono { font-family: var(--mono); }
+
+  .deck {
+    min-height: 100vh;
+    background:
+      radial-gradient(60% 40% at 80% 6%, rgba(56, 232, 255, .08), transparent 70%),
+      radial-gradient(50% 50% at 8% 92%, rgba(199, 125, 255, .10), transparent 70%),
+      var(--bg);
   }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .brand h1 { font-size: 16px; margin: 0; }
-  .top-bar-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .spacer { flex: 1; }
-  .project-selector { width: 180px; }
-  .executor-chips { display: flex; gap: 6px; }
-  .executor-chip {
-    display: inline-block; padding: 2px 8px; border-radius: 10px;
-    background: var(--panel2); border: 1px solid var(--border); font-size: 11px;
+
+  .glass {
+    background: linear-gradient(180deg, rgba(10, 30, 48, .72), rgba(4, 14, 26, .80));
+    border: 1px solid var(--line); border-radius: 18px;
+    box-shadow: 0 20px 60px -30px #000c, inset 0 1px rgba(160, 240, 255, .06);
+    backdrop-filter: blur(14px);
   }
-  .executor-chip.active { border-color: var(--ok); color: var(--ok); }
-  .layout-3col {
-    display: grid; grid-template-columns: 280px 1fr 400px; gap: 14px;
-    padding: 14px 16px; height: calc(100vh - 60px);
+  .glass-flare { border-color: rgba(255, 154, 82, .35); box-shadow: 0 0 50px -24px rgba(255, 154, 82, .55), inset 0 1px rgba(255, 255, 255, .04); }
+  .hud-frame { position: relative; overflow: hidden; }
+  .hud-frame:before, .hud-frame:after {
+    content: ""; position: absolute; width: 22px; height: 22px;
+    border: 2px solid rgba(56, 232, 255, .55); pointer-events: none; z-index: 5;
   }
-  @media (max-width: 1200px) { .layout-3col { grid-template-columns: 240px 1fr 340px; } }
-  @media (max-width: 900px) { .layout-3col { grid-template-columns: 1fr; height: auto; } }
-  .pane-left, .pane-center, .pane-right {
-    overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  .hud-frame:before { top: 10px; inset-inline-start: 10px; border-inline-end: 0; border-bottom: 0; border-radius: 6px 0 0; }
+  .hud-frame:after { bottom: 10px; inset-inline-end: 10px; border-inline-start: 0; border-top: 0; border-radius: 0 0 6px; }
+
+  .scroll::-webkit-scrollbar { height: 6px; width: 6px; }
+  .scroll::-webkit-scrollbar-thumb { background: rgba(110, 215, 255, .2); border-radius: 9px; }
+
+  /* ---------- top bar ---------- */
+  .top {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+    padding: 10px 18px; border-bottom: 1px solid var(--line);
+    background: rgba(2, 8, 16, .75); backdrop-filter: blur(10px);
+    position: sticky; top: 0; z-index: 30;
   }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
-  .card h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
-  .card h3 { font-size: 12px; margin: 14px 0 8px; color: var(--muted); }
-  .list { display: flex; flex-direction: column; gap: 6px; }
-  .item { padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
-  .item:hover { border-color: var(--accent); }
-  button.item { text-align: start; width: 100%; font: inherit; color: inherit; display: block; cursor: pointer; }
-  .item .t { display: block; font-weight: 600; }
-  .item .m { display: block; color: var(--muted); font-size: 12px; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-  .b-draft { background: #30363d; }
-  .b-active { background: #0d419d33; color: var(--accent); }
-  .b-proposed { background: #30363d; color: var(--muted); }
-  .b-awaiting_approval { background: #9e6a0333; color: var(--warn); }
-  .b-approved { background: #0d419d33; color: var(--accent); }
-  .b-running { background: #0d419d33; color: var(--accent); }
-  .b-dispatched { background: #0d419d33; color: var(--accent); }
-  .b-completed_verified { background: #2ea04333; color: var(--ok); }
-  .b-completed_unverified { background: #d2992233; color: var(--warn); }
-  .b-failed { background: #f8514933; color: var(--bad); }
-  .b-interrupted_unknown { background: #a371f733; color: var(--info); }
-  .b-closed { background: #30363d; }
-  .feed { max-height: 420px; overflow-y: auto; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
-  .feed .row { padding: 4px 6px; border-bottom: 1px solid var(--border); }
-  .feed .seq { color: var(--muted); }
-  .feed .kind { color: var(--accent); }
-  .feed .ts { color: var(--muted); float: left; }
-  .tech { direction: ltr; unicode-bidi: isolate; text-align: left;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-          font-size: 12px; word-break: break-all; }
-  pre.detail { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: var(--panel2); padding: 10px; border-radius: 6px; }
-  .row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .muted { color: var(--muted); }
-  .pill { display:inline-block; padding: 2px 8px; border-radius: 10px; background: var(--panel2); border:1px solid var(--border); font-size: 12px; }
-  #toast { position: fixed; bottom: 16px; left: 16px; background: var(--panel); border:1px solid var(--border); padding: 10px 14px; border-radius: 8px; display:none; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  td, th { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); }
-  .tab-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
-  .tab-btn {
-    background: var(--panel2); border: 1px solid var(--border); border-bottom: none;
-    border-radius: 6px 6px 0 0; padding: 6px 12px; cursor: pointer;
-    font-size: 12px; color: var(--muted); font-family: inherit;
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .orb { position: relative; display: grid; place-items: center; width: 40px; height: 40px; }
+  .orb i {
+    position: absolute; inset: 0; border-radius: 999px;
+    background: radial-gradient(circle, #e8feff 0 14%, #38e8ff 30%, rgba(56, 232, 255, .18) 56%, transparent 72%);
   }
-  .tab-btn:hover { color: var(--text); }
-  .tab-btn.active { background: var(--panel); color: var(--text-bright); border-color: var(--accent); }
-  .tab-content { flex: 1; overflow-y: auto; }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-  .approval-card {
-    border: 1px solid var(--warn); border-radius: 8px; padding: 12px;
-    background: var(--panel2); margin-bottom: 8px;
+  .orb b {
+    position: absolute; inset: -2px; border-radius: 999px;
+    border: 1px solid rgba(56, 232, 255, .45); transform: scaleY(.32);
   }
-  .approval-card .approval-header {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
-    color: var(--warn); font-weight: 600; font-size: 13px;
+  .brand .name { font-size: 22px; line-height: 1; color: var(--sun2); text-transform: uppercase; letter-spacing: .08em; }
+  .brand .sep { width: 1px; height: 24px; background: var(--line); }
+  .brand .sec { color: var(--mu); font-size: 15px; }
+  .top .spacer { flex: 1; }
+  .live { display: inline-flex; align-items: center; gap: 8px; color: var(--sun); font-size: 14px; }
+  .dotlive { position: relative; display: inline-block; }
+  .dotlive:after {
+    content: ""; position: absolute; inset: -4px; border-radius: 999px;
+    border: 1px solid currentColor; animation: ping 2s ease-out infinite;
   }
-  .evidence-panel { padding: 8px 0; }
-  .evidence-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
-  .evidence-tab {
-    background: var(--panel2); border: 1px solid var(--border); border-radius: 4px;
-    padding: 4px 10px; cursor: pointer; font-size: 11px; color: var(--muted);
-    font-family: inherit;
+  @keyframes ping { 0% { opacity: .8; transform: scale(.6); } to { opacity: 0; transform: scale(1.8); } }
+  .top .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pill {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    background: rgba(2, 10, 20, .6); border: 1px solid var(--line);
+    font-size: 12px; font-family: var(--mono);
   }
-  .evidence-tab.active { background: var(--panel-active); color: var(--text-bright); border-color: var(--accent); }
-  .evidence-content { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
-  .evidence-content pre {
-    background: var(--code-bg); padding: 8px; border-radius: 4px;
-    overflow-x: auto; direction: ltr; text-align: left; white-space: pre-wrap;
+  .langsel { color: var(--mu); font-size: 13px; }
+
+  /* ---------- buttons & fields ---------- */
+  button { cursor: pointer; font: inherit; }
+  input, select, textarea {
+    background: rgba(2, 10, 20, .7); color: var(--tx);
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 8px 12px; font-size: 14px; outline: none;
   }
-  .evidence-metrics { display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
-  .evidence-metric { font-size: 11px; color: var(--muted); }
-  .evidence-metric b { color: var(--text); }
-  .feed-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-  .feed-filter { width: 120px; }
-  .feed-follow { font-size: 11px; }
-  .diagnostics-tray {
-    position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel);
-    border-top: 1px solid var(--border); z-index: 20; max-height: 200px; overflow: hidden;
-    transition: max-height 0.2s ease;
+  input:focus, select:focus, textarea:focus { border-color: rgba(56, 232, 255, .6); }
+  .field { width: 100%; border-radius: 12px; }
+  button.navi, button.pill-btn {
+    background: rgba(2, 10, 20, .6); color: var(--tx);
+    border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; font-size: 14px;
+    transition: border-color .2s, color .2s, background .2s;
   }
-  .diagnostics-tray.collapsed { max-height: 32px; }
-  .tray-header {
-    display: flex; align-items: center; gap: 10px; padding: 6px 16px;
-    font-size: 12px; color: var(--muted); cursor: pointer;
+  button.navi:hover, button.pill-btn:hover { border-color: rgba(56, 232, 255, .5); color: var(--sun2); }
+  button.btn-core {
+    background: linear-gradient(180deg, #9af7ff, #1fc6e6); color: #00222c;
+    border: 1px solid rgba(56, 232, 255, .6); border-radius: 999px;
+    padding: 8px 16px; font-weight: 600; box-shadow: 0 0 24px -6px rgba(56, 232, 255, .8);
   }
-  .tray-content { padding: 0 16px 10px; overflow-y: auto; }
-  input, button, select, textarea {
-    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 6px; padding: 6px 10px; font-size: 13px;
-  }
-  button { cursor: pointer; }
-  .langsel { color: var(--muted); font-size: 12px; }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
-  button.ok { background: var(--ok); color: #04120a; border-color: var(--ok); }
-  button.bad { background: var(--bad); color: #1c0605; border-color: var(--bad); }
+  button.btn-core:hover { filter: brightness(1.1); }
+  button.ok { background: rgba(95, 240, 168, .12); color: #c9f7dd; border: 1px solid rgba(95, 240, 168, .5); border-radius: 999px; padding: 7px 15px; font-weight: 600; }
+  button.ok:hover { background: rgba(95, 240, 168, .2); }
+  button.bad { background: rgba(255, 92, 122, .1); color: #ffc0ca; border: 1px solid rgba(255, 92, 122, .5); border-radius: 999px; padding: 7px 15px; font-weight: 600; }
+  button.bad:hover { background: rgba(255, 92, 122, .18); }
   button:disabled { opacity: .4; cursor: not-allowed; }
+  .chip[data-on="true"] { border-color: rgba(56, 232, 255, .7); background: rgba(56, 232, 255, .12); color: #e6fdff; }
+  .inline-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 13px;
+  }
+
+  /* ---------- layout ---------- */
+  .grid {
+    display: grid; grid-template-columns: 1fr; gap: 14px; padding: 14px 16px 26px;
+  }
+  @media (min-width: 1024px) {
+    .grid {
+      grid-template-columns: 230px 1fr 360px;
+      grid-template-rows: minmax(680px, 1fr) auto;
+    }
+    .side { grid-row: span 2; }
+    .logrow { grid-column: 2 / 4; }
+  }
+  .side { padding: 8px; display: flex; flex-direction: column; gap: 4px; overflow-x: auto; }
+  @media (min-width: 1024px) { .side { flex-direction: column; overflow: visible; } }
+  .navi {
+    display: flex; align-items: center; gap: 10px; text-align: start;
+    border-radius: 12px; padding: 10px 12px; color: var(--mu);
+    background: transparent; border: 0; position: relative; white-space: nowrap;
+    transition: background .2s, color .2s;
+  }
+  .navi:hover { color: #fff; }
+  .navi.on {
+    color: #e9fdff;
+    background: linear-gradient(90deg, rgba(56, 232, 255, .14), rgba(56, 232, 255, .02));
+  }
+  .navi.on:before {
+    content: ""; position: absolute; inset-block: 8px; inset-inline-start: 0;
+    width: 3px; border-radius: 999px; background: var(--sun); box-shadow: 0 0 10px #38e8ff;
+  }
+  .navi svg { flex: none; }
+  .side .help { margin-top: auto; color: var(--mu); display: none; }
+  @media (min-width: 1024px) { .side .help { display: flex; } }
+
+  main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .view { display: none; }
+  .view.active { display: block; }
+  .view-pad { padding: 14px; }
+  .card h2, .view-pad > h2 { font-size: 13px; margin: 0 0 10px; color: var(--mu); text-transform: uppercase; letter-spacing: .5px; }
+  .card h3 { font-size: 12px; margin: 14px 0 8px; color: var(--mu); text-transform: uppercase; letter-spacing: .5px; }
+  .card { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: rgba(2, 10, 20, .45); }
+  .card + .card { margin-top: 12px; }
+
+  /* ---------- neural scene ---------- */
+  .scene-wrap { position: relative; min-height: 480px; flex: 1; direction: ltr; }
+  #scene-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .scene-head {
+    position: relative; z-index: 10; display: flex; flex-wrap: wrap; align-items: flex-end;
+    gap: 6px 16px; padding: 20px 24px 0;
+  }
+  .scene-head h2 { font-size: 30px; line-height: 1; color: var(--sun2); margin: 0; text-shadow: 0 0 18px rgba(56, 232, 255, .45); }
+  .scene-head .sub { color: var(--mu); font-size: 14px; padding-bottom: 2px; }
+  .scene-controls {
+    position: relative; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 14px 24px 0; align-items: center;
+  }
+  .search {
+    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 220px;
+    border: 1px solid var(--line); background: rgba(2, 10, 20, .6);
+    border-radius: 999px; padding: 8px 16px;
+  }
+  .search input { flex: 1; background: transparent; border: 0; padding: 0; color: var(--tx); }
+  .node-label {
+    position: absolute; pointer-events: none; white-space: nowrap; line-height: 1.25;
+    text-shadow: 0 1px 8px #000, 0 0 2px #000; z-index: 6;
+  }
+  .node-label b { display: block; font-family: var(--disp); font-size: 14px; font-weight: 600; letter-spacing: .05em; color: #f1fbff; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+  .node-label small { display: block; font-size: 12px; color: #a9c6d6; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+  .node-label .st { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+  .node-label .st i { width: 6px; height: 6px; border-radius: 999px; }
+  .cmd-tag {
+    position: absolute; pointer-events: none; white-space: nowrap;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+    text-shadow: 0 0 10px currentColor, 0 1px 4px #000; z-index: 6;
+  }
+  .hit { position: absolute; width: 52px; height: 52px; border-radius: 999px; background: transparent; border: 0; z-index: 8; cursor: grab; }
+  .hit:active { cursor: grabbing; }
+  .hit.dragging { cursor: grabbing; }
+  .hit:focus-visible { outline: 2px solid var(--sun); outline-offset: 4px; }
+  .scene-hint {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 15; display: flex; align-items: center; gap: 10px;
+    background: rgba(4, 14, 26, .92); border: 1px solid var(--line);
+    border-radius: 999px; padding: 6px 8px 6px 16px; font-size: 12.5px; color: var(--mu);
+    box-shadow: 0 12px 30px -18px #000c; max-width: 92%;
+  }
+  .scene-hint .pill-btn { padding: 3px 12px; font-size: 12px; }
+  .fiber-tip {
+    position: absolute; z-index: 18; pointer-events: none;
+    min-width: 150px; max-width: 230px;
+    background: rgba(4, 14, 26, .95); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 11px; font-size: 12.5px; color: var(--tx);
+    box-shadow: 0 12px 30px -18px #000c;
+  }
+  .fiber-tip .ft-head { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; }
+  .fiber-tip .ft-head i { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+  .fiber-tip .ft-head b { font-family: var(--disp); font-size: 13px; letter-spacing: .03em; color: #f1fbff; }
+  .fiber-tip .ft-row { color: var(--mu); }
+  .hit.core-hit { width: 120px; height: 110px; }
+  .core-tag {
+    position: absolute; pointer-events: none; white-space: nowrap; z-index: 6;
+    display: flex; gap: 8px; align-items: center; justify-content: center;
+    font-size: 12px; color: var(--sun2); letter-spacing: .16em; text-transform: uppercase;
+    text-shadow: 0 0 12px rgba(56, 232, 255, .8), 0 1px 6px #000;
+    transform: translateX(-50%);
+  }
+  .core-tag em { font-family: var(--disp); font-style: normal; font-weight: 700; font-size: 16px; letter-spacing: .08em; color: #effdff; }
+
+  .scene-foot {
+    position: relative; z-index: 10; display: flex; flex-wrap: wrap; align-items: stretch;
+    gap: 12px; padding: 0 20px 16px; margin-top: 8px;
+  }
+  .scene-foot .box {
+    background: rgba(4, 14, 26, .8); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 14px;
+  }
+  .scene-foot .lbl { font-size: 12px; color: var(--mu); }
+  .scene-foot .val { margin-top: 6px; display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 13px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; align-self: flex-end; margin-inline-start: auto; padding-bottom: 4px; color: var(--mu); font-size: 13px; }
+  .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 999px; margin-inline-end: 7px; vertical-align: middle; }
+
+  /* ---------- overlay detail cards (mission/job) ---------- */
+  .overlay-top { position: absolute; inset-inline: 0; top: 10px; z-index: 20; display: flex; justify-content: center; pointer-events: none; }
+  .float-card {
+    pointer-events: auto; position: relative; width: min(360px, 92%);
+    background: linear-gradient(180deg, rgba(10, 30, 48, .92), rgba(4, 14, 26, .94));
+    border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px;
+    box-shadow: 0 20px 60px -30px #000c;
+  }
+  .float-card .close {
+    position: absolute; top: 8px; inset-inline-end: 10px; background: transparent; border: 0;
+    color: var(--mu); font-size: 16px; line-height: 1; padding: 4px;
+  }
+  .float-card .close:hover { color: #fff; }
+  .float-card h3 { margin: 0; font-size: 17px; }
+  .float-card .meta { color: var(--mu); font-size: 12px; margin-top: 2px; }
+  .float-card .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .kv { margin-top: 4px; color: var(--mu); font-size: 12px; }
+  .jobs-mini { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .jobs-mini button {
+    text-align: start; background: rgba(2, 10, 20, .6); border: 1px solid var(--line);
+    border-radius: 8px; color: var(--tx); padding: 6px 9px; font-size: 12px;
+  }
+  .jobs-mini button:hover { border-color: var(--sun); }
+
+  /* ---------- approval gate ---------- */
+  .col-right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .gate { display: flex; flex-direction: column; overflow: hidden; min-height: 300px; }
+  .gate-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .gate-head h2 { margin: 0; font-size: 20px; }
+  .gate-head .count { margin-inline-start: auto; font-family: var(--mono); color: var(--await); }
+  .gate-head .q { color: var(--mu); font-size: 13px; }
+  .gate-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; flex: 1; overflow-y: auto; }
+  .gate-empty { margin: auto; text-align: center; padding: 24px; }
+  .gate-empty .ring {
+    margin: 0 auto 12px; width: 48px; height: 48px; display: grid; place-items: center;
+    border-radius: 999px; border: 1px solid var(--ok); color: var(--ok);
+    box-shadow: 0 0 24px rgba(95, 240, 168, .35);
+  }
+  .gate-empty .t1 { font-size: 19px; }
+  .gate-empty .t2 { color: var(--mu); margin-top: 4px; font-size: 13px; }
+  .approval-card { border: 1px solid rgba(255, 154, 82, .4); border-radius: 12px; padding: 12px; background: rgba(2, 10, 20, .55); }
+  .approval-card .t { font-weight: 600; }
+  .scopebox { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(2, 10, 20, .55); padding: 10px; }
+  .warnbox { display: flex; gap: 10px; border: 1px solid rgba(255, 154, 82, .4); background: rgba(255, 154, 82, .08); border-radius: 10px; padding: 10px; font-size: 13px; }
+  .warnbox .wt { color: var(--await); font-weight: 600; }
+  .warnbox .wb { color: #e2cdb8; }
+
+  /* ---------- flight log ---------- */
+  .logrow { padding: 14px 16px; }
+  .log-head { display: flex; align-items: center; gap: 12px; }
+  .log-head h2 { margin: 0; font-size: 20px; }
+  .log-controls { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+  .logcards { display: flex; gap: 10px; overflow-x: auto; padding: 12px 2px 6px; }
+  .logcard {
+    min-width: 180px; max-width: 220px; shrink: 0; text-align: start; color: var(--tx);
+    border: 1px solid var(--line); border-radius: 12px; background: rgba(2, 10, 20, .6); padding: 10px 12px;
+    transition: box-shadow .2s, border-color .2s;
+  }
+  .logcard.sel { box-shadow: 0 0 22px -4px var(--c, #38e8ff); border-color: var(--c, #38e8ff); }
+  .logcard .k { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+  .logcard .ic { width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; background: rgba(56, 232, 255, .13); color: var(--c, #38e8ff); flex: none; }
+  .logcard .ref { font-family: var(--mono); font-size: 12px; color: #c9e3ee; margin-top: 6px; word-break: break-all; }
+  .logcard .row2 { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; font-size: 12px; color: var(--mu); }
+  .logcard .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--c, #38e8ff); box-shadow: 0 0 6px var(--c, #38e8ff); }
+  .scrub { display: flex; align-items: center; gap: 12px; margin-top: 10px; direction: ltr; }
+  .scrub .bar { position: relative; flex: 1; height: 26px; }
+  .scrub .track { position: absolute; left: 0; right: 0; top: 50%; height: 4px; transform: translateY(-50%); border-radius: 999px; background: #0b2233; }
+  .scrub .fill { position: absolute; left: 0; top: 50%; height: 4px; transform: translateY(-50%); border-radius: 999px; background: linear-gradient(90deg, #c77dff, #38e8ff); box-shadow: 0 0 10px rgba(56, 232, 255, .53); }
+  .scrub .cursor { position: absolute; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); border-radius: 999px; border: 2px solid var(--sun); background: #03121c; box-shadow: 0 0 12px #38e8ff; }
+  .scrub .pos { font-family: var(--mono); font-size: 12px; color: var(--mu); width: 64px; text-align: right; }
+
+  /* ---------- lists, feed, tech ---------- */
+  .list { display: flex; flex-direction: column; gap: 6px; }
+  .item { padding: 9px 11px; background: rgba(2, 10, 20, .6); border: 1px solid var(--line); border-radius: 10px; }
+  .item:hover { border-color: rgba(56, 232, 255, .5); }
+  button.item { text-align: start; width: 100%; font: inherit; color: inherit; display: block; cursor: pointer; border-radius: 10px; }
+  .item .t { display: block; font-weight: 600; }
+  .item .m { display: block; color: var(--mu); font-size: 12px; }
+  .row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .muted { color: var(--mu); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; font-family: var(--mono); }
+  .b-draft { background: rgba(107, 127, 166, .2); color: var(--off); }
+  .b-active { background: rgba(79, 214, 255, .15); color: var(--run); }
+  .b-proposed { background: rgba(107, 127, 166, .2); color: var(--mu); }
+  .b-awaiting_approval { background: rgba(255, 154, 82, .16); color: var(--await); }
+  .b-approved { background: rgba(79, 214, 255, .15); color: var(--run); }
+  .b-running { background: rgba(79, 214, 255, .15); color: var(--run); }
+  .b-dispatched { background: rgba(79, 214, 255, .15); color: var(--run); }
+  .b-completed_verified { background: rgba(95, 240, 168, .16); color: var(--ok); }
+  .b-completed_unverified { background: rgba(255, 209, 102, .16); color: #ffd166; }
+  .b-failed { background: rgba(255, 92, 122, .16); color: var(--bad); }
+  .b-interrupted_unknown { background: rgba(199, 125, 255, .16); color: var(--mag); }
+  .b-closed { background: rgba(107, 127, 166, .2); color: var(--off); }
+  .tech {
+    direction: ltr; unicode-bidi: isolate; text-align: left;
+    font-family: var(--mono); font-size: 12px; word-break: break-all;
+  }
+  .feed { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  .feed .row { padding: 5px 6px; border-bottom: 1px solid var(--line); }
+  .feed .seq { color: var(--mu); }
+  .feed .kind { color: var(--sun); }
+  .feed .ts { color: var(--mu); float: left; }
+  pre.detail {
+    white-space: pre-wrap; word-break: break-word; font-size: 12px;
+    background: var(--code-bg); padding: 10px; border-radius: 8px;
+    font-family: var(--mono); direction: ltr; text-align: left;
+    max-height: 320px; overflow: auto;
+  }
+
+  /* ---------- toast & diagnostics ---------- */
+  #toast {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 60;
+    background: rgba(4, 14, 26, .95); border: 1px solid var(--line);
+    padding: 10px 16px; border-radius: 12px; display: none; max-width: 80vw;
+  }
+  #toast.okk { border-color: rgba(95, 240, 168, .5); }
+  #toast.badd { border-color: rgba(255, 92, 122, .5); }
+  .diag pre { margin-top: 8px; max-height: 420px; }
+
+  .rise { animation: rise .45s cubic-bezier(.2, .8, .2, 1) both; }
+  @keyframes rise { 0% { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
   }
 </style>
 </head>
 <body>
-<div class="nebula"></div>
-<canvas id="bg-canvas" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:-1;pointer-events:none;"></canvas>
-<header class="top-bar">
-  <div class="brand">
-    <h1>🛰️ Agent OS — Mission Control</h1>
-    <span class="muted" id="conn" data-i18n="conn.connecting"></span>
-  </div>
-  <div class="top-bar-controls">
-    <select id="project-selector" class="project-selector" aria-label="Project">
-      <option value="">—</option>
-    </select>
-    <div class="executor-chips">
-      <span class="executor-chip" id="chip-hermes">Hermes</span>
-      <span class="executor-chip" id="chip-docker">Docker</span>
-      <span class="executor-chip" id="chip-subprocess">Subprocess</span>
+<div class="deck">
+
+  <header class="top">
+    <div class="brand">
+      <span class="orb"><i></i><b></b></span>
+      <span class="name disp f-en">Agent OS</span>
+      <span class="sep"></span>
+      <span class="sec" data-i18n="app.section"></span>
+      <span class="live"><i class="dotlive" style="width:8px;height:8px;border-radius:999px;background:var(--sun)"></i><span id="conn" data-i18n="conn.connecting"></span></span>
     </div>
     <span class="spacer"></span>
-    <input id="token" type="password" data-i18n-attr="placeholder:auth.tokenPlaceholder" placeholder="" style="width:220px">
-    <button id="btn-connect" class="primary" data-i18n="auth.connect"></button>
-    <label class="langsel" for="lang-select" data-i18n="ui.language"></label>
-    <select id="lang-select" aria-label="Language">
-      <option value="en">English</option>
-      <option value="fa">فارسی</option>
-    </select>
-  </div>
-</header>
+    <div class="controls">
+      <span class="pill" id="active-mission" dir="auto">—</span>
+      <input id="token" type="password" data-i18n-attr="placeholder:auth.tokenPlaceholder" class="mono" style="width:200px">
+      <button id="btn-connect" class="btn-core" data-i18n="auth.connect"></button>
+      <label class="langsel" for="lang-select" data-i18n="ui.language"></label>
+      <select id="lang-select">
+        <option value="en">English</option>
+        <option value="fa">فارسی</option>
+      </select>
+    </div>
+  </header>
 
-<div class="layout-3col">
-  <aside class="pane-left">
-    <div class="card">
-      <h2 data-i18n="sys.status"></h2>
-      <div id="status" class="muted">—</div>
-    </div>
-    <div class="card">
-      <h2 data-i18n="ui.projects"></h2>
-      <form id="proj-form">
-        <div class="row-inline">
-          <input id="proj-name" aria-label="" placeholder="">
-          <input id="proj-root" aria-label="" placeholder="" style="flex:1">
-          <select id="proj-env" aria-label="">
-            <option value="wsl">wsl</option>
-            <option value="windows">windows</option>
-          </select>
-          <button class="ok" id="proj-add" type="submit"></button>
-        </div>
-      </form>
-      <div id="proj-list" class="list"></div>
-      <p id="proj-msg" class="muted"></p>
-    </div>
-    <div class="card">
-      <h2 data-i18n="mission.new"></h2>
-      <div class="row-inline">
-        <input id="new-mission" data-i18n-attr="placeholder:mission.titlePlaceholder" placeholder="" style="flex:1">
-        <button id="btn-mission" class="primary" data-i18n="mission.create"></button>
-      </div>
-      <h3 data-i18n="mission.list" style="margin-top:12px"></h3>
-      <div id="missions" class="list"></div>
-    </div>
-    <div class="card">
-      <h2 data-i18n="ui.tools"></h2>
-      <div class="muted" data-i18n="ui.toolsSafety"></div>
-      <div class="row-inline" style="margin-top:8px">
-        <button class="ok" id="tool-discover" type="button" data-i18n="ui.toolsDiscover"></button>
-        <span class="muted" id="tool-msg"></span>
-      </div>
-      <div id="tool-discovery" class="list"></div>
-      <h3 data-i18n="ui.toolsRegistry" style="margin-top:14px"></h3>
-      <div id="tool-list" class="list"></div>
-    </div>
-  </aside>
+  <div class="grid">
 
-  <main class="pane-center">
-    <div class="card">
-      <h2 data-i18n="mission.detail"></h2>
-      <div id="mission-detail" class="muted" data-i18n="mission.selectOne"></div>
-      <div id="jobs" class="list" style="margin-top:10px"></div>
-    </div>
-    <div class="card" id="job-card" style="display:none">
-      <h2 data-i18n="job.detail"></h2>
-      <div id="job-detail" class="muted">—</div>
-    </div>
-  </main>
+    <!-- ================= sidebar ================= -->
+    <nav class="side glass scroll" aria-label="Sections">
+      <button class="navi on" type="button" data-view="home">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.247 7.761a6 6 0 0 1 0 8.478"/><path d="M19.075 4.933a10 10 0 0 1 0 14.134"/><path d="M4.925 19.067a10 10 0 0 1 0-14.134"/><path d="M7.753 16.239a6 6 0 0 1 0-8.478"/></svg>
+        <span data-i18n="graph.title"></span>
+      </button>
+      <button class="navi" type="button" data-view="missions">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span data-i18n="mission.list"></span>
+      </button>
+      <button class="navi" type="button" data-view="projects">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+        <span data-i18n="ui.projects"></span>
+      </button>
+      <button class="navi" type="button" data-view="tools">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/></svg>
+        <span data-i18n="ui.tools"></span>
+      </button>
+      <button class="navi" type="button" data-view="workflows">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></svg>
+        <span data-i18n="ui.workflows"></span>
+      </button>
+      <button class="navi" type="button" data-view="graphics">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+        <span data-i18n="graphics.title"></span>
+      </button>
+      <button class="navi" type="button" data-view="observed">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+        <span data-i18n="ui.observedTimeline"></span>
+      </button>
+      <button class="navi" type="button" data-view="diag">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
+        <span data-i18n="diag.title"></span>
+      </button>
+    </nav>
 
-  <aside class="pane-right">
-    <div class="tab-bar" role="tablist">
-      <button class="tab-btn active" data-tab="approvals" id="tab-approvals" data-i18n="approvals.box"></button>
-      <button class="tab-btn" data-tab="evidence" id="tab-evidence" data-i18n="job.evidence"></button>
-      <button class="tab-btn" data-tab="feed" id="tab-feed" data-i18n="feed.title"></button>
-      <button class="tab-btn" data-tab="observed" id="tab-observed" data-i18n="ui.observedTimeline"></button>
-      <button class="tab-btn" data-tab="workflows" id="tab-workflows" data-i18n="ui.workflows"></button>
-      <button class="tab-btn" data-tab="graphics" id="tab-graphics" data-i18n="graphics.title"></button>
-</div>
-    <div class="tab-content">
-      <div class="tab-panel active" id="panel-approvals">
-        <div id="approvals" class="list"></div>
-      </div>
-      <div class="tab-panel" id="panel-evidence">
-        <div id="evidence-panel"></div>
-      </div>
-      <div class="tab-panel" id="panel-feed">
-        <div class="feed-controls">
-          <select id="feed-filter" class="feed-filter" aria-label="Filter">
-            <option value="all">All</option>
-            <option value="info">Info</option>
-            <option value="warn">Warning</option>
-            <option value="error">Error</option>
-            <option value="security">Security</option>
-          </select>
-          <button id="feed-follow" class="feed-follow" type="button">Follow Live</button>
+    <!-- ================= main ================= -->
+    <main>
+
+      <!-- Neural Command (home) -->
+      <section class="glass hud-frame view active" id="view-home">
+        <div class="scene-head">
+          <h2 class="disp" data-i18n="graph.title"></h2>
+          <span class="sub" data-i18n="graph.sub"></span>
+          <span class="pill mono" id="db-pill" dir="ltr">—</span>
         </div>
-        <div id="feed" class="feed">—</div>
-      </div>
-      <div class="tab-panel" id="panel-observed">
-        <div class="muted" data-i18n="ui.observedSafety"></div>
-        <div class="row-inline" style="margin-top:8px">
-          <button class="ok" id="obs-ingest" type="button" data-i18n="ui.observedIngest"></button>
-          <span class="muted" id="obs-msg"></span>
+        <div class="scene-controls">
+          <label class="search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+            <input id="scene-search" data-i18n-attr="placeholder:graph.search" dir="auto">
+          </label>
+          <label class="inline-chip">
+            <span data-i18n="mission.new"></span>
+            <input id="new-mission" data-i18n-attr="placeholder:mission.titlePlaceholder" style="width:170px;background:transparent;border:0;padding:0" dir="auto">
+          </label>
+          <button id="btn-mission" class="btn-core" data-i18n="mission.create"></button>
+          <button id="scene-recenter" class="pill-btn" type="button" data-i18n="graph.recenter"></button>
         </div>
-        <div class="muted" id="obs-state" style="margin-top:8px"></div>
-        <div id="obs-list" class="list"></div>
-      </div>
-      <div class="tab-panel" id="panel-workflows">
+
+        <div class="scene-wrap" id="scene-wrap">
+          <canvas id="scene-canvas"></canvas>
+          <div id="scene-overlay"></div>
+
+          <div class="overlay-top" id="mission-overlay" hidden>
+            <div class="float-card rise" id="mission-card">
+              <button class="close" id="mission-close" aria-label="Close">✕</button>
+              <h2 data-i18n="mission.detail"></h2>
+              <div id="mission-detail" class="muted"><span data-i18n="mission.selectOne"></span></div>
+              <div id="jobs" class="jobs-mini"></div>
+            </div>
+          </div>
+
+          <div class="overlay-top" id="job-overlay" hidden>
+            <div class="float-card rise" id="job-card" style="width:min(460px,94%)">
+              <button class="close" id="job-close" aria-label="Close">✕</button>
+              <h2 data-i18n="job.detail"></h2>
+              <div id="job-detail" class="muted">—</div>
+            </div>
+          </div>
+
+          <div class="scene-hint" id="scene-hint" hidden>
+            <span data-i18n="graph.dragHint"></span>
+            <button type="button" id="hint-dismiss" class="pill-btn" data-i18n="graph.hintDismiss"></button>
+          </div>
+
+          <div class="fiber-tip" id="fiber-tip" hidden></div>
+        </div>
+
+        <div class="scene-foot">
+          <div class="box">
+            <div class="lbl" data-i18n="graph.statusTitle"></div>
+            <div class="val" id="scene-counts"></div>
+          </div>
+          <div class="box">
+            <div class="lbl" data-i18n="graph.lastRun"></div>
+            <div class="val"><i class="dotlive" style="width:8px;height:8px;border-radius:999px;background:var(--sun)"></i><span id="last-event" class="mono">—</span></div>
+          </div>
+          <div class="box">
+            <div class="lbl" data-i18n="sys.status"></div>
+            <div class="val mono" id="sys-info">—</div>
+          </div>
+          <div class="legend" id="scene-legend"></div>
+        </div>
+      </section>
+
+      <!-- Missions list (secondary view over the same data) -->
+      <section class="glass view view-pad" id="view-missions">
+        <h2 data-i18n="mission.list"></h2>
+        <div id="missions-all" class="list"></div>
+      </section>
+
+      <!-- Projects -->
+      <section class="glass view view-pad" id="view-projects">
+        <h2 data-i18n="ui.projects"></h2>
+        <form id="proj-form" class="card">
+          <div class="row-inline">
+            <input id="proj-name" aria-label="">
+            <input id="proj-root" aria-label="" style="flex:1;min-width:220px">
+            <select id="proj-env" aria-label="">
+              <option value="wsl">wsl</option>
+              <option value="windows">windows</option>
+            </select>
+            <button class="ok" id="proj-add" type="submit"></button>
+          </div>
+          <p id="proj-msg" class="muted" style="margin-bottom:0"></p>
+        </form>
+        <div class="card"><div id="proj-list" class="list"></div></div>
+      </section>
+
+      <!-- Tools -->
+      <section class="glass view view-pad" id="view-tools">
+        <h2 data-i18n="ui.tools"></h2>
+        <div class="card">
+          <div class="muted" data-i18n="ui.toolsSafety"></div>
+          <div class="row-inline" style="margin-top:10px">
+            <button class="ok" id="tool-discover" type="button" data-i18n="ui.toolsDiscover"></button>
+            <span class="muted" id="tool-msg"></span>
+          </div>
+          <div id="tool-discovery" class="list" style="margin-top:10px"></div>
+        </div>
+        <div class="card">
+          <h2 data-i18n="ui.toolsRegistry"></h2>
+          <div id="tool-list" class="list"></div>
+        </div>
+      </section>
+
+      <!-- Workflows -->
+      <section class="glass view view-pad" id="view-workflows">
+        <h2 data-i18n="ui.workflows"></h2>
         <div class="card">
           <h2 data-i18n="wf.create"></h2>
           <div class="row-inline" style="margin-bottom:8px">
-            <input id="wf-title" data-i18n-attr="placeholder:wf.titlePlaceholder" placeholder="" style="flex:1">
+            <input id="wf-title" data-i18n-attr="placeholder:wf.titlePlaceholder" style="flex:1">
           </div>
           <div class="row-inline" style="margin-bottom:8px">
-            <input id="wf-desc" data-i18n-attr="placeholder:wf.descPlaceholder" placeholder="" style="flex:1">
+            <input id="wf-desc" data-i18n-attr="placeholder:wf.descPlaceholder" style="flex:1">
           </div>
           <div class="row-inline" style="margin-bottom:8px">
-            <input id="wf-executor" data-i18n-attr="placeholder:wf.executorPlaceholder" placeholder="" style="flex:1">
+            <input id="wf-executor" data-i18n-attr="placeholder:wf.executorPlaceholder" style="flex:1">
           </div>
           <div class="row-inline" style="margin-bottom:8px">
-            <textarea id="wf-nodes" data-i18n-attr="placeholder:wf.nodesPlaceholder" placeholder="" style="flex:1;min-height:120px;font-family:monospace;font-size:12px"></textarea>
+            <textarea id="wf-nodes" data-i18n-attr="placeholder:wf.nodesPlaceholder" style="flex:1;min-height:110px;font-family:var(--mono);font-size:12px"></textarea>
           </div>
-          <button class="primary" id="wf-create" type="button" data-i18n="wf.createBtn"></button>
-          <span class="muted" id="wf-msg" style="margin-left:8px"></span>
+          <button class="btn-core" id="wf-create" type="button" data-i18n="wf.createBtn"></button>
+          <span class="muted" id="wf-msg" style="margin-inline-start:8px"></span>
         </div>
         <div class="card">
           <h2 data-i18n="wf.list"></h2>
           <div id="wf-list" class="list"></div>
         </div>
-        <div class="card" id="wf-run-card" style="display:none">
+        <div class="card" id="wf-run-card" hidden>
           <h2 data-i18n="wf.run"></h2>
           <div id="wf-run-info" class="muted" style="margin-bottom:8px"></div>
           <div class="row-inline" style="margin-bottom:8px">
-            <textarea id="wf-run-inputs" data-i18n-attr="placeholder:wf.inputsPlaceholder" placeholder="" style="flex:1;min-height:80px;font-family:monospace;font-size:12px"></textarea>
+            <textarea id="wf-run-inputs" data-i18n-attr="placeholder:wf.inputsPlaceholder" style="flex:1;min-height:80px;font-family:var(--mono);font-size:12px"></textarea>
           </div>
           <button class="ok" id="wf-run" type="button" data-i18n="wf.runBtn"></button>
-          <span class="muted" id="wf-run-msg" style="margin-left:8px"></span>
+          <span class="muted" id="wf-run-msg" style="margin-inline-start:8px"></span>
         </div>
-        <div class="card" id="wf-exec-card" style="display:none">
+        <div class="card" id="wf-exec-card" hidden>
           <h2 data-i18n="wf.execution"></h2>
           <div id="wf-exec-detail" class="muted"></div>
         </div>
-      </div>
-      <div class="tab-panel" id="panel-graphics">
+      </section>
+
+      <!-- Graphics -->
+      <section class="glass view view-pad" id="view-graphics">
+        <h2 data-i18n="graphics.title"></h2>
         <div class="card">
           <h2 data-i18n="graphics.create"></h2>
           <div class="row-inline" style="margin-bottom:8px">
-            <input id="gfx-title" placeholder="" style="flex:1" data-i18n-attr="placeholder:graphics.titlePlaceholder">
+            <input id="gfx-title" data-i18n-attr="placeholder:graphics.titlePlaceholder" style="flex:1">
           </div>
           <div class="row-inline" style="margin-bottom:8px">
             <select id="gfx-kind" style="flex:1">
@@ -325,34 +603,84 @@
             </select>
           </div>
           <div class="row-inline" style="margin-bottom:8px">
-            <textarea id="gfx-config" placeholder="" style="flex:1;min-height:120px;font-family:monospace;font-size:12px" data-i18n-attr="placeholder:graphics.configPlaceholder"></textarea>
+            <textarea id="gfx-config" data-i18n-attr="placeholder:graphics.configPlaceholder" style="flex:1;min-height:110px;font-family:var(--mono);font-size:12px"></textarea>
           </div>
-          <button class="primary" id="gfx-create" type="button" data-i18n="graphics.createBtn"></button>
-          <span class="muted" id="gfx-msg" style="margin-left:8px"></span>
+          <button class="btn-core" id="gfx-create" type="button" data-i18n="graphics.createBtn"></button>
+          <span class="muted" id="gfx-msg" style="margin-inline-start:8px"></span>
         </div>
         <div class="card">
           <h2 data-i18n="graphics.list"></h2>
           <div id="gfx-list" class="list"></div>
         </div>
-        <div class="card" id="gfx-preview" style="display:none">
+        <div class="card" id="gfx-preview" hidden>
           <h2 data-i18n="graphics.preview"></h2>
-          <div id="gfx-svg"></div>
+          <div id="gfx-svg" class="tech"></div>
+        </div>
+      </section>
+
+      <!-- Observed -->
+      <section class="glass view view-pad" id="view-observed">
+        <h2 data-i18n="ui.observedTimeline"></h2>
+        <div class="muted" data-i18n="ui.observedSafety"></div>
+        <div class="row-inline" style="margin-top:10px">
+          <button class="ok" id="obs-ingest" type="button" data-i18n="ui.observedIngest"></button>
+          <span class="muted" id="obs-msg"></span>
+        </div>
+        <div class="muted" id="obs-state" style="margin-top:8px"></div>
+        <div id="obs-list" class="list" style="margin-top:10px"></div>
+      </section>
+
+      <!-- Diagnostics -->
+      <section class="glass view view-pad diag" id="view-diag">
+        <h2 data-i18n="diag.title"></h2>
+        <div class="muted" data-i18n="diag.hint"></div>
+        <pre id="diag" class="feed">—</pre>
+        <button id="diag-clear" type="button" class="pill-btn" data-i18n="diag.clear"></button>
+      </section>
+
+    </main>
+
+    <!-- ================= right column: approval gate ================= -->
+    <aside class="col-right">
+      <section class="glass gate" id="gate">
+        <div class="gate-head">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="gate-icon"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+          <h2 class="disp" data-i18n="approvals.box"></h2>
+          <span class="count mono" id="gate-count">0</span>
+          <span class="q" data-i18n="approvals.queue"></span>
+        </div>
+        <div class="gate-body" id="approvals"></div>
+      </section>
+    </aside>
+
+    <!-- ================= flight log (event feed) ================= -->
+    <section class="glass logrow" id="flightlog">
+      <div class="log-head">
+        <h2 class="disp" data-i18n="feed.title"></h2>
+        <div class="log-controls">
+          <select id="feed-filter" aria-label="Filter">
+            <option value="all" data-i18n="feed.all"></option>
+            <option value="info" data-i18n="feed.info"></option>
+            <option value="warn" data-i18n="feed.warn"></option>
+            <option value="error" data-i18n="feed.error"></option>
+            <option value="security" data-i18n="feed.security"></option>
+          </select>
+          <button id="feed-follow" class="pill-btn" type="button" data-i18n="log.follow"></button>
+          <button id="feed-play" class="pill-btn" type="button" data-i18n="log.replay"></button>
         </div>
       </div>
-    </div>
-  </aside>
-</div>
+      <div id="feed" class="logcards scroll">—</div>
+      <div class="scrub">
+        <button id="feed-play2" class="pill-btn" type="button" aria-label="Replay" style="width:38px;height:34px;border-radius:999px;padding:0">▶</button>
+        <div class="bar">
+          <div class="track"></div>
+          <div class="fill" id="scrub-fill" style="width:0"></div>
+          <div class="cursor" id="scrub-cursor" style="left:0"></div>
+        </div>
+        <span class="pos" id="scrub-pos">LIVE</span>
+      </div>
+    </section>
 
-<div class="diagnostics-tray" id="diagnostics-tray">
-  <div class="tray-header" id="tray-header">
-    <span data-i18n="diag.title"></span>
-    <span class="spacer"></span>
-    <button id="tray-toggle" type="button" data-i18n="diag.clear"></button>
-  </div>
-  <div class="tray-content" id="tray-content">
-    <div class="muted" data-i18n="diag.hint"></div>
-    <pre id="diag" class="feed" style="margin-top:8px">—</pre>
-    <button id="diag-clear" type="button" data-i18n="diag.clear"></button>
   </div>
 </div>
 
@@ -363,16 +691,21 @@
 const I18N = {
   en: {
     "app.title": "Agent OS — Mission Control",
+    "app.section": "Mission Control",
     "conn.connecting": "Connecting…",
     "conn.connected": "Connected ✅",
     "conn.needToken": "Enter your token",
+    "conn.stale": "Stale (last: {time})",
+    "conn.disconnected": "Disconnected",
+    "conn.forbidden": "Forbidden (403)",
+    "conn.unavailable": "Service unavailable",
     "auth.tokenPlaceholder": "Access token (Bearer)",
     "auth.connect": "Connect",
     "ui.language": "Language",
     "ui.saved": "Language saved",
     "ui.projects": "Projects",
     "ui.tools": "Tools",
-    "ui.toolsSafety": "Discovery is read-only: nothing is installed and no file is written. A discovered tool is NOT permitted to run, and registering one grants no execution rights.",
+    "ui.toolsSafety": "Discovery probes allowlisted binaries on explicit user click. It installs and registers nothing. A discovered tool is NOT permitted to run, and this grants no execution rights.",
     "ui.toolsDiscover": "Discover tools",
     "ui.toolsRegistry": "Registered tools",
     "ui.toolsNone": "Nothing discovered yet. Run discovery to see what is present.",
@@ -383,17 +716,21 @@ const I18N = {
     "ui.toolsDiscoverFail": "Discovery failed",
     "ui.observedTimeline": "Observed activity (external source)",
     "ui.observedSafety": "These events were recorded by another runtime and read from here. Seeing an event means it already happened; ingesting it never stopped, blocked or allowed anything. Blocking actions is a separate, later capability.",
-    "ui.observedIngest": "Read activity",
+    "ui.observedIngest": "Manual observation import — not enabled",
     "ui.obsUnavailable": "The source cannot be read right now. No events are being shown, and this is not the same as an empty timeline.",
+    "ui.obsNotConfigured": "Source not configured",
     "ui.obsNone": "The source is readable.",
     "ui.obsOk": "The source is readable.",
-    "ui.obsEmpty": "No observed events yet. Use \"Read activity\" to load what the source has recorded.",
+    "ui.obsEmpty": "No observed events yet.",
     "ui.obsNothingNew": "The source is readable and has nothing new since the last read.",
     "ui.obsAdded": "Read {n} new event(s).",
     "ui.obsNeedToken": "No token entered - nothing was read. Enter the token in the Connection panel, then read again.",
     "ui.obsFailed": "Could not read the source",
     "ui.obsNoNotes": "no anomalies recorded",
     "ui.obsUnattributed": "not attributable",
+    "ui.obsDisabledMsg": "Manual observation import is not enabled in read-only mode.",
+    "ui.obsNotConfiguredHint": "Source path is not configured.",
+    "ui.obsUnavailableHint": "Observed activity source is currently unavailable.",
     "ui.toolsNeedToken": "No token entered - nothing was sent to the server. Enter the token in the Connection panel, then discover again.",
     "ui.toolsVersionUnknown": "version unknown",
     "ui.toolsSkipped": "Not probed",
@@ -408,7 +745,7 @@ const I18N = {
     "wf.createBtn": "Create Template",
     "wf.list": "Workflow Templates",
     "wf.run": "Run Workflow",
-    "wf.inputsPlaceholder": "Runtime inputs as JSON: {\"target_path\":\"/home/mehdi/workspace\"}",
+    "wf.inputsPlaceholder": "Runtime inputs as JSON: {\"target_path\":\"/workspace/project\"}",
     "wf.runBtn": "Execute",
     "wf.execution": "Execution Status",
     "wf.created": "Workflow template created",
@@ -418,13 +755,13 @@ const I18N = {
     "wf.noTemplates": "No workflow templates yet. Create one above.",
     "wf.nodesInvalid": "Invalid nodes JSON",
     "wf.inputsInvalid": "Invalid inputs JSON",
-            "graphics.title": "Graphics",
-            "graphics.create": "Create Graphic",
-            "graphics.createBtn": "Create",
-            "graphics.titlePlaceholder": "Title",
-            "graphics.configPlaceholder": "Config JSON",
-            "graphics.list": "Graphics List",
-            "graphics.preview": "Preview",
+    "graphics.title": "Graphics",
+    "graphics.create": "Create Graphic",
+    "graphics.createBtn": "Create",
+    "graphics.titlePlaceholder": "Title",
+    "graphics.configPlaceholder": "Config JSON",
+    "graphics.list": "Graphics List",
+    "graphics.preview": "Preview",
     "ui.noProjects": "No project registered yet",
     "ui.name": "Name",
     "ui.root": "Folder",
@@ -488,7 +825,18 @@ const I18N = {
     "approvals.forJob": "Approval for job",
     "approvals.grant": "Approve",
     "approvals.reject": "Reject",
+    "approvals.queue": "in queue",
+    "approvals.warnTitle": "Sensitive change — tier",
+    "approvals.warnBody": "Review the scope below before deciding.",
     "feed.empty": "No events",
+    "feed.all": "All",
+    "feed.info": "Info",
+    "feed.warn": "Warning",
+    "feed.error": "Error",
+    "feed.security": "Security",
+    "log.follow": "Follow live",
+    "log.paused": "Paused",
+    "log.replay": "Replay",
     "mission.new": "New mission",
     "mission.titlePlaceholder": "Mission title",
     "mission.create": "Create",
@@ -497,23 +845,44 @@ const I18N = {
     "mission.selectOne": "Select a mission",
     "job.detail": "Job details + evidence",
     "approvals.box": "Approvals",
-    "feed.title": "Events (event feed)",
+    "feed.title": "Flight log",
     "diag.title": "Diagnostics",
     "diag.hint": "Errors the page caught, newest last. Kept in this tab only.",
     "diag.clear": "Clear",
+    "graph.title": "Neural Command",
+    "graph.sub": "The core thinks; the fiber carries every order to the field.",
+    "graph.search": "Search missions, jobs, events…",
+    "graph.recenter": "Recenter",
+    "graph.dragHint": "Drag a node to arrange it — it stays where you drop it. Click to inspect.",
+    "graph.hintDismiss": "Got it",
+    "tip.state": "State",
+    "tip.executor": "Executor",
+    "graph.statusTitle": "Mission status",
+    "graph.lastRun": "Last event",
+    "graph.jobs": "jobs",
+    "legend.active": "Active",
+    "legend.awaiting": "Awaiting approval",
+    "legend.complete": "Completed",
+    "legend.offline": "Idle / draft",
+    "legend.failed": "Failed"
   },
   fa: {
     "app.title": "Agent OS — Mission Control",
+    "app.section": "مرکز فرماندهی مأموریت",
     "conn.connecting": "اتصال…",
     "conn.connected": "متصل ✅",
     "conn.needToken": "توکن را وارد کنید",
+    "conn.stale": "قدیمی (آخرین: {time})",
+    "conn.disconnected": "قطع شد",
+    "conn.forbidden": "دسترسی غیرمجاز (۴۰۳)",
+    "conn.unavailable": "سرویس در دسترس نیست",
     "auth.tokenPlaceholder": "توکن دسترسی (Bearer)",
     "auth.connect": "اتصال",
     "ui.language": "زبان",
     "ui.saved": "زبان ذخیره شد",
     "ui.projects": "پروژه‌ها",
     "ui.tools": "ابزارها",
-    "ui.toolsSafety": "کشف فقط‌خواندنی است: چیزی نصب نمی‌شود و هیچ فایلی نوشته نمی‌شود. ابزار کشف‌شده مجاز به اجرا نیست و ثبت آن هم هیچ اجازهٔ اجرایی نمی‌دهد.",
+    "ui.toolsSafety": "کشف (discovery) فقط‌خواندنی است و باینری‌های مجاز را با کلیک صریح کاربر کاوش می‌کند. چیزی نصب یا ثبت نمی‌شود و ابزار کشف‌شده مجاز به اجرا نیست و اجازهٔ اجرایی نمی‌دهد.",
     "ui.toolsDiscover": "کشف ابزارها",
     "ui.toolsRegistry": "ابزارهای ثبت‌شده",
     "ui.toolsNone": "هنوز چیزی کشف نشده. برای دیدن ابزارهای موجود، کشف را اجرا کنید.",
@@ -524,22 +893,52 @@ const I18N = {
     "ui.toolsDiscoverFail": "کشف انجام نشد",
     "ui.observedTimeline": "فعالیت مشاهده‌شده (منبع بیرونی)",
     "ui.observedSafety": "این رویدادها را اجرای دیگری ثبت کرده و از اینجا خوانده می‌شوند. دیدن یک رویداد یعنی کار از پیش انجام شده؛ خواندن آن هیچ‌چیز را متوقف، مسدود یا مجاز نکرده است. متوقف‌کردن عملیات، قابلیتی جدا و در آینده است.",
-    "ui.observedIngest": "خواندن فعالیت",
+    "ui.observedIngest": "درون‌ریزی دستی مشاهدات — غیرفعال",
     "ui.obsUnavailable": "منبع در حال حاضر خوانده نمی‌شود. هیچ رویدادی نمایش داده نشده و این با تایم‌لاین خالی یکی نیست.",
+    "ui.obsNotConfigured": "منبع پیکربندی نشده است",
     "ui.obsNone": "منبع قابل خواندن است.",
     "ui.obsOk": "منبع قابل خواندن است.",
-    "ui.obsEmpty": "هنوز رویدادی مشاهده نشده. برای خواندن آنچه منبع ثبت کرده، «خواندن فعالیت» را بزنید.",
+    "ui.obsEmpty": "هنوز رویدادی مشاهده نشده است.",
     "ui.obsNothingNew": "منبع قابل خواندن است و از خواندن قبلی چیز تازه‌ای ندارد.",
     "ui.obsAdded": "{n} رویداد تازه خوانده شد.",
     "ui.obsNeedToken": "توکنی وارد نشده - چیزی خوانده نشده. توکن را در پنل اتصال وارد کنید و دوباره بخوانید.",
     "ui.obsFailed": "خواندن منبع ممکن نشد",
     "ui.obsNoNotes": "نقصی ثبت نشده",
     "ui.obsUnattributed": "نامشخص",
+    "ui.obsDisabledMsg": "درون‌ریزی دستی مشاهدات در حالت فقط‌خواندنی غیرفعال است.",
+    "ui.obsNotConfiguredHint": "مسیر منبع پیکربندی نشده است.",
+    "ui.obsUnavailableHint": "منبع رویدادهای مشاهده‌شده در حال حاضر در دسترس نیست.",
     "ui.toolsNeedToken": "توکنی وارد نشده - هیچ درخواستی به سرور فرستاده نشد. توکن را در پنل اتصال وارد کنید و دوباره کشف را بزنید.",
     "ui.toolsVersionUnknown": "نسخه نامشخص",
     "ui.toolsSkipped": "کاوش نشد",
     "ui.toolsSkippedHint": "روی دیسک هست اما اجرا نشد: این نام‌ها در فهرست مجاز کاوش نیستند.",
     "ui.toolsNoExec": "بدون اجازهٔ اجرا",
+    "ui.workflows": "گردش‌کارها",
+    "wf.create": "ایجاد قالب گردش‌کار",
+    "wf.titlePlaceholder": "عنوان گردش‌کار",
+    "wf.descPlaceholder": "توضیحات (اختیاری)",
+    "wf.executorPlaceholder": "مجری پیش‌فرض (مثلاً subprocess-executor)",
+    "wf.nodesPlaceholder": "JSON نودها: [{\"id\":\"step1\",\"action_type\":\"execute_job\",\"metadata\":{\"command\":[\"echo\",\"hello\"]},\"depends_on\":[]}]",
+    "wf.createBtn": "ایجاد قالب",
+    "wf.list": "قالب‌های گردش‌کار",
+    "wf.run": "اجرای گردش‌کار",
+    "wf.inputsPlaceholder": "ورودی‌های زمان اجرا به صورت JSON: {\"target_path\":\"/workspace/project\"}",
+    "wf.runBtn": "اجرا",
+    "wf.execution": "وضعیت اجرا",
+    "wf.created": "قالب گردش‌کار ایجاد شد",
+    "wf.createFailed": "ایجاد گردش‌کار ناموفق بود",
+    "wf.executed": "اجرای گردش‌کار شروع شد",
+    "wf.executeFailed": "اجرای گردش‌کار ناموفق بود",
+    "wf.noTemplates": "هنوز قالب گردش‌کاری وجود ندارد. یکی ایجاد کنید.",
+    "wf.nodesInvalid": "JSON نودها نامعتبر است",
+    "wf.inputsInvalid": "JSON ورودی‌ها نامعتبر است",
+    "graphics.title": "گرافیک",
+    "graphics.create": "ایجاد گرافیک",
+    "graphics.createBtn": "ایجاد",
+    "graphics.titlePlaceholder": "عنوان",
+    "graphics.configPlaceholder": "پیکربندی JSON",
+    "graphics.list": "لیست گرافیک‌ها",
+    "graphics.preview": "پیش‌نمایش",
     "ui.noProjects": "هنوز پروژه‌ای ثبت نشده",
     "ui.name": "نام",
     "ui.root": "پوشه",
@@ -603,7 +1002,18 @@ const I18N = {
     "approvals.forJob": "تأیید برای کار",
     "approvals.grant": "تأیید",
     "approvals.reject": "رد",
+    "approvals.queue": "در صف",
+    "approvals.warnTitle": "تغییر حساس — سطح",
+    "approvals.warnBody": "پیش از تصمیم، محدودهٔ زیر را بازبینی کنید.",
     "feed.empty": "بدون رویداد",
+    "feed.all": "همه",
+    "feed.info": "اطلاعات",
+    "feed.warn": "هشدار",
+    "feed.error": "خطا",
+    "feed.security": "امنیت",
+    "log.follow": "دنبال زنده",
+    "log.paused": "متوقف",
+    "log.replay": "بازپخش",
     "mission.new": "ثبت مأموریت جدید",
     "mission.titlePlaceholder": "عنوان مأموریت",
     "mission.create": "ایجاد",
@@ -612,37 +1022,26 @@ const I18N = {
     "mission.selectOne": "یک مأموریت را انتخاب کنید",
     "job.detail": "جزئیات کار + شواهد",
     "approvals.box": "صندوق تأییدها",
-    "feed.title": "رویدادها (event feed)",
+    "feed.title": "دفتر پرواز",
     "diag.title": "تشخیص خطا",
     "diag.hint": "خطاهایی که صفحه گرفت، جدیدترین در انتها. فقط در همین زبانه می‌ماند.",
     "diag.clear": "پاک کردن",
-    "ui.workflows": "گردش‌کارها",
-    "wf.create": "ایجاد قالب گردش‌کار",
-    "wf.titlePlaceholder": "عنوان گردش‌کار",
-    "wf.descPlaceholder": "توضیحات (اختیاری)",
-    "wf.executorPlaceholder": "مجری پیش‌فرض (مثلاً subprocess-executor)",
-    "wf.nodesPlaceholder": "JSON نودها: [{\"id\":\"step1\",\"action_type\":\"execute_job\",\"metadata\":{\"command\":[\"echo\",\"hello\"]},\"depends_on\":[]}]",
-    "wf.createBtn": "ایجاد قالب",
-    "wf.list": "قالب‌های گردش‌کار",
-    "wf.run": "اجرای گردش‌کار",
-    "wf.inputsPlaceholder": "ورودی‌های زمان اجرا به صورت JSON: {\"target_path\":\"/home/mehdi/workspace\"}",
-    "wf.runBtn": "اجرا",
-    "wf.execution": "وضعیت اجرا",
-    "wf.created": "قالب گردش‌کار ایجاد شد",
-    "wf.createFailed": "ایجاد گردش‌کار ناموفق بود",
-    "wf.executed": "اجرای گردش‌کار شروع شد",
-    "wf.executeFailed": "اجرای گردش‌کار ناموفق بود",
-    "wf.noTemplates": "هنوز قالب گردش‌کاری وجود ندارد. یکی ایجاد کنید.",
-    "wf.nodesInvalid": "JSON نودها نامعتبر است",
-    "wf.inputsInvalid": "JSON ورودی‌ها نامعتبر است",
-            "graphics.title": "گرافیک",
-            "graphics.create": "ایجاد گرافیک",
-            "graphics.createBtn": "ایجاد",
-            "graphics.titlePlaceholder": "عنوان",
-            "graphics.configPlaceholder": "پیکربندی JSON",
-            "graphics.list": "لیست گرافیک‌ها",
-            "graphics.preview": "پیش‌نمایش",
-
+    "graph.title": "فرماندهی عصبی",
+    "graph.sub": "هسته فکر می‌کند؛ فیبر نور هر فرمان را به میدان می‌رساند.",
+    "graph.search": "جست‌وجوی مأموریت، کار، رویداد…",
+    "graph.recenter": "بازگشت به مرکز",
+    "graph.dragHint": "گره را بکشید تا جابه‌جا شود — رها کنید تا همان‌جا بماند. برای بازدید کلیک کنید.",
+    "graph.hintDismiss": "متوجه شدم",
+    "tip.state": "وضعیت",
+    "tip.executor": "مجری",
+    "graph.statusTitle": "وضعیت مأموریت‌ها",
+    "graph.lastRun": "آخرین رویداد",
+    "graph.jobs": "کار",
+    "legend.active": "فعال",
+    "legend.awaiting": "منتظر تأیید",
+    "legend.complete": "کامل شد",
+    "legend.offline": "بی‌کار / پیش‌نویس",
+    "legend.failed": "شکست"
   },
 };
 
@@ -680,8 +1079,8 @@ function applyI18n(root) {
 
 const LANG_STORE_KEY = "agent_os_lang";
 const TOKEN_STORE_KEY = "agent_os_token";
-const OBS_SOURCE = "C:/Users/Mehdi/AppData/Local/hermes/profiles/"
-  + "my-personal-assistant/state.db";
+const OBS_SOURCE_KEY = "agent_os_obs_source";
+let OBS_SOURCE = readStore(OBS_SOURCE_KEY) || "";
 let OBS_CURSOR = 0;
 function readStore(key) {
   try { return localStorage.getItem(key); } catch (e) { return null; }
@@ -705,10 +1104,12 @@ function setLang(lang) {
   LANG = Object.prototype.hasOwnProperty.call(I18N, lang) ? lang : DEFAULT_LANG;
   document.documentElement.lang = LANG === "fa" ? "fa" : "en";
   document.documentElement.dir = LANG === "fa" ? "rtl" : "ltr";
+  document.body.className = LANG === "fa" ? "f-fa" : "f-en";
   persistLang(LANG);
   syncLangSelect();
   if (typeof applyI18n === "function") applyI18n();
   if (typeof _labelProjectForm === "function") _labelProjectForm();
+  if (typeof setConnectionState === "function") setConnectionState(CURRENT_CONN_STATE);
   if (DATA_ON_SCREEN && typeof refresh === "function") {
     try { refresh(); } catch (e) { /* refresh reports its own failures */ }
   }
@@ -723,25 +1124,49 @@ const UI_LOG_CAP = 200;
 const UI_LOG = [];
 let UI_LOG_DIRTY = false;
 
+function _safeSanitize(str) {
+  if (!str) return "";
+  let s = String(str);
+  if (TOKEN && TOKEN.length >= 4) {
+    s = s.split(TOKEN).join("[REDACTED]");
+  }
+  return s.replace(/Bearer\s+[A-Za-z0-9_\-\.]+/gi, "Bearer [REDACTED]");
+}
+
 function _errText(e) {
   if (!e) return "unknown error";
-  if (typeof e === "string") return e;
-  return e.message || e.name || String(e);
+  if (typeof e === "string") return _safeSanitize(e);
+  return _safeSanitize(e.message || e.name || String(e));
 }
 
 function uiLog(level, message, fields) {
+  const safeMsg = _safeSanitize(message);
   const entry = {
     at: new Date().toISOString().slice(11, 23),
     level: level || "error",
-    message: String(message),
+    message: safeMsg,
   };
-  if (fields) for (const k of Object.keys(fields)) entry[k] = fields[k];
+  let safeFields = null;
+  if (fields) {
+    safeFields = {};
+    const ALLOW = ["status", "path", "detail", "reason"];
+    for (const k of ALLOW) {
+      if (k in fields) {
+        const v = fields[k];
+        if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+          const safeVal = typeof v === "string" ? _safeSanitize(v) : v;
+          entry[k] = safeVal;
+          safeFields[k] = safeVal;
+        }
+      }
+    }
+  }
   UI_LOG.push(entry);
   while (UI_LOG.length > UI_LOG_CAP) UI_LOG.shift();
   UI_LOG_DIRTY = true;
   const line = `${entry.at} ${entry.level.toUpperCase()} ${entry.message}`;
-  if (entry.level === "error") console.error(line, fields || "");
-  else console.warn(line, fields || "");
+  if (entry.level === "error") console.error(line, safeFields || "");
+  else console.warn(line, safeFields || "");
   const el = $("diag");
   if (el) el.textContent = UI_LOG.length
     ? UI_LOG.map((r) => `${r.at} ${r.level.toUpperCase().padEnd(5)} ${r.message}`
@@ -764,32 +1189,111 @@ let selectedJob = null;
 
 $("token").value = TOKEN;
 
-async function api(method, path, body) {
+const DEFAULT_TIMEOUT_MS = 8000;
+
+async function api(method, path, body, options = {}) {
+  const upperMethod = String(method || "GET").toUpperCase();
+  const isBodyless = upperMethod === "GET" || upperMethod === "HEAD";
+  let realBody = body;
+  let realOpts = options;
+  if (isBodyless && body && (body.signal || body.timeoutMs || body.headers)) {
+    realOpts = body;
+    realBody = undefined;
+  }
+
+  const timeoutMs = typeof realOpts.timeoutMs === "number" ? realOpts.timeoutMs : DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  if (realOpts.signal) {
+    if (realOpts.signal.aborted) {
+      clearTimeout(timer);
+      controller.abort();
+    } else {
+      realOpts.signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        controller.abort();
+      }, { once: true });
+    }
+  }
+
   const headers = {};
   if (TOKEN) headers["Authorization"] = "Bearer " + TOKEN;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  const resp = await fetch(path, {
-    method, headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  if (realOpts.headers) Object.assign(headers, realOpts.headers);
+
+  let fetchBody = undefined;
+  if (!isBodyless && realBody !== undefined) {
+    headers["Content-Type"] = "application/json";
+    fetchBody = JSON.stringify(realBody);
+  }
+
+  let resp;
+  try {
+    resp = await fetch(path, {
+      method: upperMethod,
+      headers,
+      body: fetchBody,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (timedOut) {
+      const e = new Error(`Request timed out after ${timeoutMs}ms`);
+      e.name = "TimeoutError";
+      e.isTimeout = true;
+      e.path = `${upperMethod} ${path}`;
+      uiLog("warn", `request timeout: ${upperMethod} ${path} (${timeoutMs}ms)`);
+      throw e;
+    }
+    if (controller.signal.aborted || (realOpts.signal && realOpts.signal.aborted)) {
+      const e = new Error("Request aborted");
+      e.name = "AbortError";
+      e.isAbort = true;
+      e.path = `${upperMethod} ${path}`;
+      throw e;
+    }
+    const safeMsg = _safeSanitize(err && err.message ? err.message : String(err));
+    const e = new Error(safeMsg);
+    e.name = err && err.name ? err.name : "FetchError";
+    e.path = `${upperMethod} ${path}`;
+    uiLog("warn", `network error: ${upperMethod} ${path}`, { detail: safeMsg });
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+
   const data = await resp.json().catch(() => {
-    uiLog("warn", "response body was not JSON",
-      { status: resp.status, path: `${method} ${path}` });
+    uiLog("warn", "response body was not JSON", {
+      status: resp.status,
+      path: `${upperMethod} ${path}`,
+    });
     return {};
   });
+
   if (!resp.ok) {
-    const err = data.error || {};
-    const e = new Error(err.message || ("HTTP " + resp.status));
-    e.reason = err.reason || "";
+    const errObj = (data && data.error) || {};
+    const rawMsg = errObj.message || ("HTTP " + resp.status);
+    const safeMsg = _safeSanitize(rawMsg);
+    const e = new Error(safeMsg);
+    e.status = resp.status;
+    e.reason = errObj.reason || "";
+    e.path = `${upperMethod} ${path}`;
     throw e;
   }
   return data;
 }
 
-function toast(msg) {
-  const t = $("toast");
-  t.textContent = msg; t.style.display = "block";
-  clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = "none"), 3000);
+function toast(msg, ok) {
+  const el = $("toast");
+  el.textContent = _safeSanitize(msg);
+  el.className = ok ? "okk" : "badd";
+  el.style.display = "block";
+  clearTimeout(el._h);
+  el._h = setTimeout(() => (el.style.display = "none"), 3000);
 }
 
 function badge(state) {
@@ -802,48 +1306,888 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
 }
 
+let LAST_SUCCESS_TIME = null;
+let CURRENT_CONN_STATE = "disconnected";
+
+function formatTime(ts) {
+  if (!ts) return "—";
+  try {
+    return new Date(ts).toLocaleTimeString(localeFor());
+  } catch (err) {
+    return "—";
+  }
+}
+
+function setConnectionState(state) {
+  CURRENT_CONN_STATE = state;
+  const connEl = $("conn");
+  const dotEl = document.querySelector(".top .dotlive");
+
+  let text = "";
+  let color = "var(--sun)";
+  let isLive = false;
+
+  switch (state) {
+    case "connected":
+      text = t("conn.connected");
+      color = "var(--ok)";
+      isLive = true;
+      break;
+    case "stale":
+      text = t("conn.stale").replace("{time}", formatTime(LAST_SUCCESS_TIME));
+      color = "var(--sun)";
+      isLive = false;
+      break;
+    case "disconnected":
+      text = t("conn.disconnected");
+      color = "var(--bad)";
+      isLive = false;
+      break;
+    case "token_required":
+      text = t("conn.needToken");
+      color = "var(--sun)";
+      isLive = false;
+      break;
+    case "forbidden":
+      text = t("conn.forbidden");
+      color = "var(--bad)";
+      isLive = false;
+      break;
+    case "unavailable":
+      text = t("conn.unavailable");
+      color = "var(--bad)";
+      isLive = false;
+      break;
+    default:
+      text = t("conn.connecting");
+      color = "var(--sun)";
+      isLive = false;
+  }
+
+  if (connEl) {
+    connEl.textContent = text;
+    connEl.style.color = color;
+  }
+  if (dotEl) {
+    dotEl.style.background = color;
+    dotEl.style.color = color;
+    dotEl.style.animation = isLive ? "" : "none";
+    dotEl.style.opacity = isLive ? "1" : "0.7";
+  }
+}
+
+function handleRefreshError(e) {
+  uiLog("error", "refresh failed", { detail: _errText(e), status: e.status });
+  if (e.status === 401) {
+    setConnectionState("token_required");
+  } else if (e.status === 403) {
+    setConnectionState("forbidden");
+  } else if (e.status === 502 || e.status === 503 || e.status === 504) {
+    setConnectionState("unavailable");
+  } else {
+    if (DATA_ON_SCREEN && LAST_SUCCESS_TIME) {
+      setConnectionState("stale");
+    } else {
+      setConnectionState("disconnected");
+    }
+  }
+}
+
 async function connect() {
   TOKEN = $("token").value.trim();
   writeStore(TOKEN_STORE_KEY, TOKEN);
+  if (!TOKEN) {
+    setConnectionState("token_required");
+    return;
+  }
+  setConnectionState("connecting");
   try {
     await api("GET", "/api/status");
-    $("conn").textContent = t("conn.connected"); $("conn").style.color = "var(--ok)";
+    LAST_SUCCESS_TIME = Date.now();
+    setConnectionState("connected");
   } catch (e) {
-    $("conn").textContent = t("err.prefix") + e.message; $("conn").style.color = "var(--bad)";
+    uiLog("error", "connect failed", { detail: _errText(e), status: e.status });
+    if (e.status === 401) setConnectionState("token_required");
+    else if (e.status === 403) setConnectionState("forbidden");
+    else if (e.status === 502 || e.status === 503 || e.status === 504) setConnectionState("unavailable");
+    else setConnectionState("disconnected");
     throw e;
   }
 }
 
 async function loadStatus() {
-  const s = await api("GET", "/api/status");
-  $("status").innerHTML = `
-    <div><b>${t("sys.version")}</b> ${escapeHtml(s.version)}</div>
-    <div><b>${t("sys.executors")}</b> ${(s.executors||[]).join(", ") || t("sys.none")}</div>
-    <div><b>${t("sys.db")}</b> <span class="muted">${escapeHtml(s.db_path)}</span></div>`;
+  const opts = arguments[0];
+  const s = await api("GET", "/api/status", undefined, opts);
+  $("db-pill").textContent = s.db_path || "—";
+  $("active-mission").textContent = s.version ? ("v" + s.version) : "—";
+  const info = $("sys-info");
+  if (info) {
+    info.textContent = "";
+    const ver = document.createElement("span");
+    ver.textContent = t("sys.version") + " " + (s.version || "—");
+    const ex = document.createElement("span");
+    ex.textContent = t("sys.executors") + " "
+      + ((s.executors || []).join(", ") || t("sys.none"));
+    info.appendChild(ver);
+    info.appendChild(ex);
+    const db = document.createElement("span");
+    db.textContent = t("sys.db") + " " + (s.db_path || "—");
+    info.appendChild(db);
+  }
 }
 
+// ============================================================
+//  NEURAL SCENE — canvas 2D port of the Neural Command design
+//  core = the system, mission nodes on the fiber, job children
+// ============================================================
+const SCENE = {
+  missions: [], jobsByMission: {}, pendingByJob: {},
+  selectedMission: null, selectedJob: null, query: "",
+  W: 800, H: 520, dpr: 1, backdrop: null,
+  nodes: {}, fibers: [], fiberDefs: [], raf: 0, last: 0,
+  // spring-physics layout: pos/vel integrate toward targets each frame;
+  // pins are user-dragged anchors; drag is the live pointer drag
+  pos: {}, pins: {}, drag: null, hover: null, _pt: 0,
+};
+
+const STATE_COLORS = {
+  draft: "#6b7fa6", proposed: "#6b7fa6",
+  active: "#4fd6ff", running: "#4fd6ff", approved: "#4fd6ff", dispatched: "#4fd6ff",
+  awaiting_approval: "#ff9a52", completed_unverified: "#ffd166",
+  completed_verified: "#5ff0a8", completed: "#5ff0a8",
+  failed: "#ff5c7a", interrupted_unknown: "#c77dff",
+  closed: "#6b7fa6", offline: "#6b7fa6",
+};
+const CORE_COLOR = "#38e8ff";
+
+function sceneColor(key) {
+  // missionNodeState reports "awaiting"; the palette key is "awaiting_approval"
+  return STATE_COLORS[key === "awaiting" ? "awaiting_approval" : key] || "#6b7fa6";
+}
+
+function missionNodeState(m) {
+  const jobs = SCENE.jobsByMission[m.id] || [];
+  if (jobs.some((j) => j.state === "awaiting_approval")
+      || SCENE.pendingByJob[m.id]) return "awaiting";
+  return m.state === "active" ? "running" : "offline";
+}
+
+function bez(a, c1, c2, b, n = 42) {
+  const out = new Float32Array((n + 1) * 2);
+  for (let i = 0; i <= n; i++) {
+    const s = i / n, d = 1 - s;
+    out[i * 2] = d*d*d*a.x + 3*d*d*s*c1.x + 3*d*s*s*c2.x + s*s*s*b.x;
+    out[i * 2 + 1] = d*d*d*a.y + 3*d*d*s*c1.y + 3*d*s*s*c2.y + s*s*s*b.y;
+  }
+  return out;
+}
+function strandAt(strand, t) {
+  const n = strand.length / 2 - 1;
+  const f = Math.max(0, Math.min(n, t * n));
+  const i = Math.floor(f), r = f - i;
+  const j = Math.min(n, i + 1);
+  return [strand[i*2] + (strand[j*2] - strand[i*2]) * r,
+          strand[i*2+1] + (strand[j*2+1] - strand[i*2+1]) * r];
+}
+function hexA(hex, a) {
+  const v = parseInt(hex.replace("#", ""), 16);
+  return `rgba(${v >> 16 & 255},${v >> 8 & 255},${v & 255},${a})`;
+}
+
+function paintBackdrop(W, H, dpr) {
+  const c = document.createElement("canvas");
+  c.width = W * dpr; c.height = H * dpr;
+  const g = c.getContext("2d");
+  g.scale(dpr, dpr);
+  const bg = g.createRadialGradient(W / 2, H * .47, 0, W / 2, H * .47, Math.max(W, H) * .75);
+  bg.addColorStop(0, "#0a2236"); bg.addColorStop(.5, "#061423"); bg.addColorStop(1, "#02070f");
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.filter = "blur(2.5px)";
+  for (let i = 0; i < 170; i++) {
+    const x = Math.random() * W, y = Math.random() * H;
+    if (Math.hypot(x - W / 2, y - H * .47) < Math.min(W, H) * .3) continue;
+    const w = 3 + Math.random() * 9, h = 2 + Math.random() * 4;
+    const warm = Math.random() < .18;
+    g.fillStyle = warm ? `rgba(255,214,160,${.05 + Math.random() * .12})`
+                       : `rgba(150,225,255,${.05 + Math.random() * .16})`;
+    g.fillRect(x, y, w, h);
+  }
+  g.filter = "none";
+  g.strokeStyle = "rgba(90,200,255,.045)"; g.lineWidth = 1;
+  for (let x = 0; x < W; x += 32) { g.beginPath(); g.moveTo(x + .5, 0); g.lineTo(x + .5, H); g.stroke(); }
+  for (let y = 0; y < H; y += 32) { g.beginPath(); g.moveTo(0, y + .5); g.lineTo(W, y + .5); g.stroke(); }
+  const vig = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .8);
+  vig.addColorStop(0, "rgba(2,6,14,0)"); vig.addColorStop(1, "rgba(2,6,14,.85)");
+  g.fillStyle = vig; g.fillRect(0, 0, W, H);
+  return c;
+}
+
+function strandsBetween(a, b, count, spread) {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const o = (i - (count - 1) / 2) * spread;
+    const m1 = { x: a.x + (b.x - a.x) * .3, y: a.y + (b.y - a.y) * .16 + o };
+    const m2 = { x: a.x + (b.x - a.x) * .72, y: a.y + (b.y - a.y) * .84 + o * .4 };
+    out.push(bez(a, m1, m2, b));
+  }
+  return out;
+}
+
+// layoutScene only computes TARGETS; stepScene() springs the live positions
+// toward them, so new nodes fly out of the core and re-layouts glide.
+function layoutScene() {
+  const W = SCENE.W, H = SCENE.H;
+  const C = { x: W / 2, y: H * .47 };
+  const nodes = {};
+  const ms = SCENE.missions;
+  const L = [], R = [];
+  ms.forEach((m, i) => ((L.length <= R.length) ? L : R).push(m));
+  const put = (arr, side) => arr.forEach((m, i) => {
+    const y = H * (.18 + .64 * (arr.length === 1 ? .5 : i / (arr.length - 1)));
+    const p = (y - C.y) / (H * .4);
+    const inset = 110 + p * p * W * .05;
+    const x = side === -1 ? inset : W - inset;
+    nodes[m.id] = { x, y, side, kind: "mission", ref: m };
+  });
+  put(L, -1); put(R, 1);
+  const sel = SCENE.selectedMission;
+  if (sel && nodes[sel]) {
+    const jobs = SCENE.jobsByMission[sel] || [];
+    const base = nodes[sel];
+    const toward = -base.side; // toward the core column
+    jobs.forEach((j, i) => {
+      const n = jobs.length;
+      const ox = toward * (110 + (n > 3 ? 30 : 0));
+      const oy = (n === 1 ? 0 : (i - (n - 1) / 2) * Math.min(44, (H * .6) / n));
+      nodes["job:" + j.id] = {
+        x: base.x + ox, y: base.y + oy, side: toward, kind: "job", ref: j,
+        parent: sel, ox, oy,
+      };
+    });
+  }
+  nodes.core = { x: C.x, y: C.y, side: 0, kind: "core" };
+  SCENE.nodes = nodes;
+
+  // seed spring positions: unseen nodes start at the core and fly outward
+  Object.keys(nodes).forEach((id) => {
+    if (!SCENE.pos[id]) SCENE.pos[id] = { x: C.x, y: C.y, vx: 0, vy: 0 };
+  });
+  Object.keys(SCENE.pos).forEach((id) => { if (!nodes[id]) delete SCENE.pos[id]; });
+  Object.keys(SCENE.pins).forEach((id) => {
+    if (!nodes[id] || id === "core") delete SCENE.pins[id];
+  });
+
+  SCENE.fiberDefs = ms.map((m) => ({
+    from: "core", to: m.id, id: m.id,
+    state: missionNodeState(m), count: 3, spread: 16,
+  }));
+  if (sel) for (const j of SCENE.jobsByMission[sel] || []) {
+    SCENE.fiberDefs.push({
+      from: sel, to: "job:" + j.id, id: "job:" + j.id,
+      state: j.state === "awaiting_approval" ? "awaiting_approval" : j.state,
+      count: 1, spread: 8,
+    });
+  }
+  placeOverlays();
+}
+
+// one physics tick: integrate every node toward its target. Job nodes target
+// their parent's LIVE position plus a stored offset, so dragging a mission
+// carries its children; a pin overrides everything (that is the drop anchor).
+function stepScene(now) {
+  const dt = Math.min(.05, Math.max(0, (now - (SCENE._pt || now)) / 1000)) || .016;
+  SCENE._pt = now;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const k = reduced ? 500 : 60;   // stiffness (slightly under-damped -> glide)
+  const d = reduced ? 44 : 11;    // damping
+  const W = SCENE.W, H = SCENE.H;
+  for (const [id, n] of Object.entries(SCENE.nodes)) {
+    let tx, ty;
+    const pin = SCENE.pins[id];
+    if (pin) { tx = pin.x; ty = pin.y; }
+    else if (n.parent && SCENE.pos[n.parent]) {
+      const par = SCENE.pos[n.parent];
+      tx = par.x + n.ox; ty = par.y + n.oy;
+    } else { tx = n.x; ty = n.y; }
+    tx = Math.max(46, Math.min(W - 46, tx));
+    ty = Math.max(40, Math.min(H - 40, ty));
+    const p = SCENE.pos[id];
+    if (!p) continue;
+    p.vx += ((tx - p.x) * k - p.vx * d) * dt;
+    p.vy += ((ty - p.y) * k - p.vy * d) * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.x = Math.max(24, Math.min(W - 24, p.x));
+    p.y = Math.max(24, Math.min(H - 24, p.y));
+  }
+  const C = { x: W / 2, y: H * .47 };
+  SCENE.fibers = SCENE.fiberDefs.map((f) => ({
+    ...f,
+    strands: strandsBetween(SCENE.pos[f.from] || C, SCENE.pos[f.to] || C,
+                            f.count, f.spread),
+  }));
+  // a hover that lost its fiber must not leave a ghost tooltip behind
+  if (SCENE.hover && !SCENE.fiberDefs.some((fd) => fd.id === SCENE.hover.id)) {
+    fiberTipHide();
+  }
+}
+
+function matchQuery(m) {
+  const q = SCENE.query.trim().toLowerCase();
+  if (!q) return true;
+  const jobs = SCENE.jobsByMission[m.id] || [];
+  return m.title.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
+    || jobs.some((j) => (j.title || "").toLowerCase().includes(q));
+}
+
+function dimNode(id) {
+  const q = SCENE.query.trim().toLowerCase();
+  if (q) {
+    if (id === "core") return false;
+    const m = SCENE.missions.find((x) => x.id === id);
+    if (m && matchQuery(m)) return false;
+    if (id.startsWith("job:")) {
+      const j = (SCENE.jobsByMission[SCENE.selectedMission] || []).find((x) => "job:" + x.id === id);
+      if (j && (j.title || "").toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function drawScene(now) {
+  const canvas = $("scene-canvas");
+  if (!canvas) return;
+  const g = canvas.getContext("2d");
+  const { W, H, dpr } = SCENE;
+  const slow = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? .25 : 1;
+  stepScene(now); // spring-integrate node positions, then rebuild fibers
+  const t = (now - SCENE.last) / 1000 * slow;
+  SCENE.raf = requestAnimationFrame(drawScene);
+  if (!SCENE.backdrop) return;
+
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.globalCompositeOperation = "source-over";
+  g.drawImage(SCENE.backdrop, 0, 0, W, H);
+  g.globalCompositeOperation = "lighter";
+
+  const nodes = SCENE.nodes;
+  const stroke = (pts, color, alpha, width) => {
+    g.strokeStyle = hexA(color, alpha); g.lineWidth = width;
+    g.beginPath(); g.moveTo(pts[0], pts[1]);
+    for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+    g.stroke();
+  };
+  const comet = (strand, tt, color, r, a) => {
+    const [x, y] = strandAt(strand, tt);
+    const glow = g.createRadialGradient(x, y, 0, x, y, r * 5);
+    glow.addColorStop(0, hexA("#ffffff", a * .9));
+    glow.addColorStop(.3, hexA(color, a * .5));
+    glow.addColorStop(1, hexA(color, 0));
+    g.fillStyle = glow;
+    g.beginPath(); g.arc(x, y, r * 5, 0, Math.PI * 2); g.fill();
+  };
+
+  // fibers + comets
+  SCENE.fibers.forEach((f, fi) => {
+    const dim = dimNode(f.to);
+    const sel = f.to === SCENE.selectedMission || f.to === SCENE.selectedJob;
+    const hov = !!SCENE.hover && SCENE.hover.id === f.id;
+    const color = f.state === "awaiting_approval" ? STATE_COLORS.awaiting_approval : sceneColor(f.state);
+    const offline = f.state === "offline" || f.state === "draft";
+    if (offline) g.setLineDash([4, 7]);
+    f.strands.forEach((s, si) => {
+      const mid = si === Math.floor(f.strands.length / 2);
+      const a = dim ? .05 : (hov ? .95 : (sel ? .6 : .26));
+      stroke(s, "#5ff0a8", a * .25, mid ? 3.5 : 2);
+      stroke(s, color, a, mid ? (hov ? 2.6 : 1.6) : 1);
+    });
+    g.setLineDash([]);
+    if (!offline && !dim) {
+      const speed = f.state === "awaiting_approval" ? .16 : .34;
+      f.strands.forEach((s, si) => {
+        if (si % 2) return;
+        let tt = (now / 1000 * speed * slow + si * .21 + (f.id.length % 5) * .13) % 1;
+        let cc = color, aa = sel ? 1 : .75;
+        if (f.state === "awaiting_approval" && tt > .62) {
+          tt = .62; aa *= .6 + Math.sin(now / 160) * .4;
+        }
+        comet(s, tt, cc, 1.8, aa);
+      });
+    }
+  });
+
+  // mission nodes
+  Object.entries(nodes).forEach(([id, n]) => {
+    if (n.kind === "core") return;
+    const live = SCENE.pos[id] || n;
+    const dim = dimNode(id);
+    const color = n.kind === "mission" ? sceneColor(missionNodeState(n.ref)) : sceneColor(n.ref.state);
+    const isJob = n.kind === "job";
+    const b = (isJob ? .55 : 1) * (SCENE.selectedMission === id ? 1.18 : 1);
+    const alpha = dim ? .15 : (n.ref.state === "offline" || n.ref.state === "draft" ? .5 : 1);
+    g.strokeStyle = hexA(color, .75 * alpha);
+    g.lineWidth = 2;
+    g.setLineDash([14 * b, 8 * b]);
+    g.lineDashOffset = (n.ref.state === "offline" || n.ref.state === "draft") ? 0 : -now / 50;
+    g.beginPath(); g.ellipse(live.x, live.y, 20 * b, 20 * b, 0, 0, Math.PI * 2); g.stroke();
+    g.setLineDash([]);
+    g.strokeStyle = hexA(color, .4 * alpha); g.lineWidth = 1;
+    g.beginPath(); g.arc(live.x, live.y, 13 * b, 0, Math.PI * 2); g.stroke();
+    const halo = g.createRadialGradient(live.x, live.y, 0, live.x, live.y, 26 * b);
+    halo.addColorStop(0, hexA(color, .55 * alpha)); halo.addColorStop(1, hexA(color, 0));
+    g.fillStyle = halo;
+    g.beginPath(); g.arc(live.x, live.y, 26 * b, 0, Math.PI * 2); g.fill();
+    // drag feedback: solid ring while dragging, soft amber pin ring when anchored
+    if ((SCENE.drag && SCENE.drag.id === id) || SCENE.pins[id]) {
+      const pinned = !!SCENE.pins[id];
+      g.strokeStyle = hexA(pinned ? "#ffd166" : color, pinned ? .8 : .55);
+      g.lineWidth = 1.4;
+      g.setLineDash(pinned ? [5, 4] : []);
+      g.beginPath();
+      g.arc(live.x, live.y, (30 + Math.sin(now / 260) * 2) * b, 0, Math.PI * 2);
+      g.stroke();
+      g.setLineDash([]);
+    }
+  });
+
+  // core
+  const C = nodes.core; const R = Math.min(W, H) * .13;
+  const coreY = C.y - R * 1.5;
+  const ring = (x, y, rx, ry, a, w, dash, off) => {
+    g.strokeStyle = hexA(CORE_COLOR, a); g.lineWidth = w;
+    if (dash) { g.setLineDash(dash); g.lineDashOffset = off; }
+    g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.stroke();
+    g.setLineDash([]);
+  };
+  ring(C.x, coreY, R * 1.9, R * .34, .16, 1.2, null, 0);
+  ring(C.x, coreY, R * 1.45, R * .24, .3, 2, [R * .9, R * .3, R * .2, R * .4], now / 22);
+  ring(C.x, coreY + R * .06, R * .8, R * .12, .45, 1.5, [8, 6], -now / 30);
+  const ped = g.createLinearGradient(0, C.y + R * .6, 0, coreY + R * 1.7);
+  ped.addColorStop(0, "rgba(56,232,255,0)"); ped.addColorStop(1, "rgba(56,232,255,.22)");
+  g.fillStyle = ped;
+  g.beginPath();
+  g.moveTo(C.x - R * .35, C.y + R * .9); g.lineTo(C.x + R * .35, C.y + R * .9);
+  g.lineTo(C.x + R * .8, coreY + R * 1.42); g.lineTo(C.x - R * .8, coreY + R * 1.42);
+  g.fill();
+  ring(C.x, coreY + R * 1.42, R * .8, R * .16, .7, 2.2, null, 0);
+  ring(C.x, coreY + R * 1.48, R * 1.35, R * .27, .32, 1.4, [R * .6, R * .15], -now / 18);
+  ring(C.x, coreY + R * 1.52, R * 2.1, R * .42, .14, 1, [3, 9], now / 10);
+  const glow = g.createRadialGradient(C.x, coreY + R * 1.42, 0, C.x, coreY + R * 1.42, R * .9);
+  glow.addColorStop(0, "rgba(120,240,255,.45)"); glow.addColorStop(1, "rgba(56,232,255,0)");
+  g.fillStyle = glow;
+  g.beginPath(); g.ellipse(C.x, coreY + R * 1.42, R * .9, R * .2, 0, 0, Math.PI * 2); g.fill();
+  const pulse = 1 + Math.sin(now / 400) * .04;
+  const head = g.createRadialGradient(C.x, coreY, 0, C.x, coreY, R * pulse);
+  head.addColorStop(0, "rgba(232,254,255,.9)");
+  head.addColorStop(.35, "rgba(56,232,255,.55)");
+  head.addColorStop(.75, "rgba(56,232,255,.12)");
+  head.addColorStop(1, "rgba(56,232,255,0)");
+  g.fillStyle = head;
+  g.beginPath(); g.arc(C.x, coreY, R * pulse, 0, Math.PI * 2); g.fill();
+  ring(C.x, coreY, R * .62, R * .62, .35, 1.6, [6, 5], -now / 14);
+  const sweep = g.createLinearGradient(C.x - W * .44, 0, C.x + W * .44, 0);
+  sweep.addColorStop(0, hexA("#c77dff", 0)); sweep.addColorStop(.4, hexA("#c77dff", .5));
+  sweep.addColorStop(.5, hexA("#c77dff", .12)); sweep.addColorStop(.6, hexA("#c77dff", .5));
+  sweep.addColorStop(1, hexA("#c77dff", 0));
+  g.strokeStyle = sweep; g.lineWidth = 1.6;
+  g.beginPath(); g.moveTo(C.x - W * .44, C.y + R * .05); g.lineTo(C.x + W * .44, C.y + R * .05); g.stroke();
+}
+
+function placeOverlays() {
+  const wrap = $("scene-wrap");
+  const host = $("scene-overlay");
+  if (!wrap || !host) return;
+  const rtl = LANG === "fa";
+  const dir = rtl ? "rtl" : "ltr";
+  Object.entries(SCENE.nodes).forEach(([id, n]) => {
+    let label = host.querySelector(`[data-node="${id}"]`);
+    if (!label) {
+      label = document.createElement("div");
+      label.className = "node-label";
+      label.dataset.node = id;
+      const btn = document.createElement("button");
+      btn.className = "hit" + (id === "core" ? " core-hit" : "");
+      btn.dataset.hit = id;
+      btn.addEventListener("click", () => nodeClicked(id));
+      btn.addEventListener("pointerdown", (ev) => nodeDragStart(ev, id));
+      host.appendChild(label);
+      host.appendChild(btn);
+    }
+    const btn = host.querySelector(`[data-hit="${id}"]`);
+    let color, title, sub, stateKey;
+    if (id === "core") {
+      color = CORE_COLOR;
+      title = "Agent OS";
+      sub = t("app.section");
+      stateKey = null;
+      label.classList.add("core-tag");
+      label.innerHTML = "";
+      const em = document.createElement("em");
+      em.textContent = "Agent OS";
+      label.appendChild(em);
+      label.appendChild(document.createTextNode("· " + t("app.section")));
+    } else {
+      const isJob = n.kind === "job";
+      color = isJob ? sceneColor(n.ref.state) : sceneColor(missionNodeState(n.ref));
+      stateKey = isJob ? n.ref.state : missionNodeState(n.ref);
+      title = n.ref.title || n.ref.id;
+      sub = isJob
+        ? (t("job.executor") + ": " + (n.ref.executor || "—"))
+        : ((SCENE.jobsByMission[id] || []).length + " " + t("graph.jobs"));
+      label.classList.remove("core-tag");
+      label.className = "node-label";
+      label.dir = dir;
+      const b = document.createElement("b");
+      b.textContent = title;
+      const small = document.createElement("small");
+      small.textContent = sub;
+      const st = document.createElement("span");
+      st.className = "st";
+      st.style.color = color;
+      const dot = document.createElement("i");
+      dot.style.background = color;
+      st.appendChild(dot);
+      st.appendChild(document.createTextNode(stateLabel(stateKey)));
+      label.appendChild(b); label.appendChild(small); label.appendChild(st);
+    }
+    // follow the LIVE spring position, not the layout target
+    const live = SCENE.pos[id] || n;
+    const right = n.side === 1;
+    const lx = right ? SCENE.W - live.x - 30 : live.x + 30;
+    const ly = n.kind === "core" ? live.y + 64 : live.y + 28;
+    label.style.left = (n.kind === "core" ? live.x : (right ? lx : lx)) + "px";
+    label.style.top = ly + "px";
+    if (n.kind === "core") { label.style.left = live.x + "px"; }
+    label.style.textAlign = n.kind === "core" ? "center" : (right ? "right" : "left");
+    label.style.opacity = dimNode(id) ? .25 : 1;
+    if (btn) {
+      btn.style.left = (live.x - (id === "core" ? 60 : 26)) + "px";
+      btn.style.top = (live.y - (id === "core" ? 55 : 26)) + "px";
+      btn.setAttribute("aria-label", title);
+    }
+  });
+  // remove stale overlays
+  host.querySelectorAll("[data-node]").forEach((el) => {
+    if (!SCENE.nodes[el.dataset.node]) el.remove();
+  });
+  host.querySelectorAll("[data-hit]").forEach((el) => {
+    if (!SCENE.nodes[el.dataset.hit]) el.remove();
+  });
+  wrap.dataset.rtl = rtl ? "1" : "0";
+}
+
+function stateLabel(key) {
+  if (key === "running" || key === "active") return t("legend.active");
+  if (key === "awaiting" || key === "awaiting_approval") return t("legend.awaiting");
+  if (key === "complete" || key === "completed" || key === "completed_verified") return t("legend.complete");
+  if (key === "failed") return t("legend.failed");
+  return t("legend.offline");
+}
+
+function nodeClicked(id) {
+  if (SCENE.dragJustMoved) { SCENE.dragJustMoved = false; return; }
+  if (id === "core") { selectMission(null); return; }
+  if (id.startsWith("job:")) {
+    const j = (SCENE.jobsByMission[SCENE.selectedMission] || [])
+      .find((x) => "job:" + x.id === id);
+    if (j) showJob(j);
+    return;
+  }
+  selectMission(id === SCENE.selectedMission ? null : id);
+}
+
+// ---- node dragging: press to arrange, release to pin; click still inspects
+function nodeDragStart(ev, id) {
+  if (id === "core") return;
+  if (ev.button !== undefined && ev.button !== 0) return;
+  const live = SCENE.pos[id];
+  if (!live) return;
+  ev.preventDefault();
+  SCENE.dragJustMoved = false; // a new gesture may click again
+  SCENE.drag = {
+    id, moved: false,
+    sx: ev.clientX, sy: ev.clientY,
+    dx: ev.clientX - live.x, dy: ev.clientY - live.y,
+  };
+  const btn = document.querySelector(`[data-hit="${id}"]`);
+  if (btn) btn.classList.add("dragging");
+  window.addEventListener("pointermove", nodeDragMove, { passive: false });
+  window.addEventListener("pointerup", nodeDragEnd);
+  window.addEventListener("pointercancel", nodeDragEnd);
+}
+
+function nodeDragMove(ev) {
+  const drag = SCENE.drag;
+  const p = drag && SCENE.pos[drag.id];
+  if (!p) return;
+  if (!drag.moved) {
+    // 4px threshold separates a click from a drag; the node always tracks
+    // the pointer 1:1 from the grab point (dx/dy are the grab offsets)
+    if (Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) < 4) return;
+    drag.moved = true;
+  }
+  ev.preventDefault();
+  p.x = Math.max(24, Math.min(SCENE.W - 24, ev.clientX - drag.dx));
+  p.y = Math.max(24, Math.min(SCENE.H - 24, ev.clientY - drag.dy));
+  p.vx = 0; p.vy = 0;
+}
+
+function nodeDragEnd(ev) {
+  const drag = SCENE.drag;
+  SCENE.drag = null;
+  window.removeEventListener("pointermove", nodeDragMove);
+  window.removeEventListener("pointerup", nodeDragEnd);
+  window.removeEventListener("pointercancel", nodeDragEnd);
+  if (!drag) return;
+  const btn = document.querySelector(`[data-hit="${drag.id}"]`);
+  if (btn) btn.classList.remove("dragging");
+  if (!drag.moved) return; // plain click: let the click handler inspect
+  SCENE.dragJustMoved = true;
+  const wrap = $("scene-wrap");
+  const rect = wrap ? wrap.getBoundingClientRect() : { left: 0, top: 0 };
+  if (SCENE.pos[drag.id]) {
+    // pin where dropped; a pinned mission stands alone, a pinned job is
+    // released from its parent offset
+    SCENE.pins[drag.id] = {
+      x: Math.max(46, Math.min(SCENE.W - 46, ev.clientX - rect.left)),
+      y: Math.max(40, Math.min(SCENE.H - 40, ev.clientY - rect.top)),
+    };
+    placeOverlays();
+  }
+}
+
+function selectMission(id) {
+  SCENE.selectedMission = id;
+  SCENE.selectedJob = null;
+  $("mission-overlay").hidden = !id;
+  $("job-overlay").hidden = true;
+  if (id) {
+    selectedMission = SCENE.missions.find((m) => m.id === id) || null;
+    if (selectedMission) loadMissionDetail(id).catch((e) => toast(t("err.prefix") + e.message));
+  } else {
+    selectedMission = null;
+  }
+  layoutScene();
+}
+
+// ---- fiber hover tooltips: hit-test the strands, show state + executor
+function distToPolyline(pts, x, y) {
+  let best = Infinity;
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const x1 = pts[i], y1 = pts[i + 1], x2 = pts[i + 2], y2 = pts[i + 3];
+    const dx = x2 - x1, dy = y2 - y1;
+    const len2 = dx * dx + dy * dy;
+    let tt = len2 ? ((x - x1) * dx + (y - y1) * dy) / len2 : 0;
+    tt = Math.max(0, Math.min(1, tt));
+    const d = Math.hypot(x - (x1 + tt * dx), y - (y1 + tt * dy));
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function fiberAtPoint(x, y) {
+  // reversed: job strands are drawn last (on top) and win overlaps
+  for (let fi = SCENE.fibers.length - 1; fi >= 0; fi--) {
+    const f = SCENE.fibers[fi];
+    if (dimNode(f.to)) continue;
+    for (const s of f.strands) {
+      if (distToPolyline(s, x, y) <= 9) return f;
+    }
+  }
+  return null;
+}
+
+function fiberTipHide() {
+  const tip = $("fiber-tip");
+  if (tip) tip.hidden = true;
+}
+
+function fiberTipShow(f, clientX, clientY) {
+  const tip = $("fiber-tip");
+  if (!tip) return;
+  const color = sceneColor(f.state);
+  const isJob = typeof f.to === "string" && f.to.startsWith("job:");
+  tip.textContent = "";
+  const head = document.createElement("div");
+  head.className = "ft-head";
+  const dot = document.createElement("i");
+  dot.style.background = color;
+  dot.style.boxShadow = "0 0 8px " + color;
+  const b = document.createElement("b");
+  head.appendChild(dot); head.appendChild(b);
+  tip.appendChild(head);
+  if (isJob) {
+    const j = (SCENE.jobsByMission[SCENE.selectedMission] || [])
+      .find((x) => "job:" + x.id === f.to);
+    if (!j) { fiberTipHide(); return; }
+    b.textContent = j.title || j.id;
+    const rows = [
+      t("tip.state") + ": " + stateLabel(j.state),
+      t("tip.executor") + ": " + (j.executor || "—"),
+    ];
+    rows.forEach((r) => {
+      const el = document.createElement("div");
+      el.className = "ft-row";
+      el.textContent = r;
+      tip.appendChild(el);
+    });
+  } else {
+    const m = SCENE.missions.find((x) => x.id === f.to);
+    b.textContent = m ? (m.title || m.id) : f.to;
+    const jobs = SCENE.jobsByMission[f.to] || [];
+    const rows = [
+      t("tip.state") + ": " + stateLabel(f.state),
+      jobs.length + " " + t("graph.jobs"),
+    ];
+    rows.forEach((r) => {
+      const el = document.createElement("div");
+      el.className = "ft-row";
+      el.textContent = r;
+      tip.appendChild(el);
+    });
+  }
+  const wrap = $("scene-wrap");
+  const rect = wrap ? wrap.getBoundingClientRect() : { left: 0, top: 0 };
+  const px = clientX - rect.left, py = clientY - rect.top;
+  tip.style.left = Math.min(Math.max(8, px + 14), Math.max(8, SCENE.W - 240)) + "px";
+  tip.style.top = Math.max(8, py - 12) + "px";
+  tip.hidden = false;
+}
+
+function scenePointerMove(ev) {
+  if (SCENE.drag) { SCENE.hover = null; fiberTipHide(); return; }
+  const wrap = $("scene-wrap");
+  if (!wrap) return;
+  const rect = wrap.getBoundingClientRect();
+  const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+  const f = fiberAtPoint(x, y);
+  SCENE.hover = f ? { id: f.id } : null;
+  if (f) fiberTipShow(f, ev.clientX, ev.clientY);
+  else fiberTipHide();
+}
+
+function scenePointerLeave() {
+  SCENE.hover = null;
+  fiberTipHide();
+}
+
+function resizeScene() {
+  const wrap = $("scene-wrap");
+  const canvas = $("scene-canvas");
+  if (!wrap || !canvas) return;
+  const rect = wrap.getBoundingClientRect();
+  SCENE.W = Math.max(320, rect.width);
+  SCENE.H = Math.max(380, rect.height);
+  SCENE.dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = SCENE.W * SCENE.dpr;
+  canvas.height = SCENE.H * SCENE.dpr;
+  SCENE.backdrop = paintBackdrop(SCENE.W, SCENE.H, SCENE.dpr);
+  layoutScene();
+}
+
+function startScene() {
+  const canvas = $("scene-canvas");
+  if (!canvas || !canvas.getContext) return;
+  canvas.addEventListener("pointermove", scenePointerMove);
+  canvas.addEventListener("pointerleave", scenePointerLeave);
+  SCENE.last = performance.now();
+  resizeScene();
+  cancelAnimationFrame(SCENE.raf);
+  SCENE.raf = requestAnimationFrame(drawScene);
+}
+
+function rebuildScene() {
+  SCENE.missions = (SCENE.missions || []).slice();
+  layoutScene();
+  renderSceneFoot();
+  maybeShowSceneHint();
+}
+
+// one-time drag hint: shown on the first run that has missions on the fiber
+function maybeShowSceneHint() {
+  const el = $("scene-hint");
+  if (!el) return;
+  if (!SCENE.missions.length || readStore("agent_os_drag_hint_done") === "1") {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  applyI18n(el);
+}
+
+function hideSceneHint() {
+  const el = $("scene-hint");
+  if (!el) return;
+  el.hidden = true;
+  writeStore("agent_os_drag_hint_done", "1");
+}
+
+$("hint-dismiss").addEventListener("click", hideSceneHint);
+
+function renderSceneFoot() {
+  const counts = { running: 0, awaiting: 0, complete: 0, offline: 0 };
+  SCENE.missions.forEach((m) => { counts[missionNodeState(m)]++; });
+  const el = $("scene-counts");
+  el.textContent = "";
+  Object.entries(counts).forEach(([k, v]) => {
+    const dot = document.createElement("i");
+    dot.style.cssText = "width:10px;height:10px;border-radius:999px;background:" + sceneColor(k === "running" ? "active" : k === "awaiting" ? "awaiting_approval" : k === "complete" ? "completed" : "offline")
+      + ";box-shadow:0 0 8px " + sceneColor(k === "running" ? "active" : k);
+    const span = document.createElement("span");
+    span.textContent = String(v);
+    el.appendChild(dot); el.appendChild(span);
+  });
+  const legend = $("scene-legend");
+  legend.textContent = "";
+  [["active", "legend.active"], ["awaiting_approval", "legend.awaiting"],
+   ["completed", "legend.complete"], ["offline", "legend.offline"]].forEach(([ck, lk]) => {
+    const wrap = document.createElement("span");
+    const i = document.createElement("i");
+    i.style.background = sceneColor(ck);
+    i.style.boxShadow = "0 0 8px " + sceneColor(ck);
+    wrap.appendChild(i);
+    wrap.appendChild(document.createTextNode(t(lk)));
+    legend.appendChild(wrap);
+  });
+}
+
+// ----------------------------------------------------
+// MISSIONS + JOBS
+// ----------------------------------------------------
 async function loadMissions() {
-  const d = await api("GET", "/api/missions");
-  const el = $("missions");
+  const opts = arguments[0];
+  const d = await api("GET", "/api/missions", undefined, opts);
+  SCENE.missions = d.missions || [];
+  const el = $("missions-all");
   el.innerHTML = "";
   (d.missions || []).forEach((m) => {
     const div = document.createElement("button");
     div.type = "button";
     div.className = "item";
     div.innerHTML = `<span class="t">${escapeHtml(m.title)}</span><span class="m">${badge(m.state)}</span>`;
-    div.onclick = () => { selectedMission = m; loadMissionDetail(m.id); };
+    div.onclick = () => {
+      switchView("home");
+      selectMission(m.id);
+    };
     el.appendChild(div);
   });
+  const jobs = await api("GET", "/api/jobs", undefined, opts);
+  SCENE.jobsByMission = {};
+  (jobs.jobs || []).forEach((j) => {
+    (SCENE.jobsByMission[j.mission_id] = SCENE.jobsByMission[j.mission_id] || []).push(j);
+  });
+  rebuildScene();
 }
 
-async function loadMissionDetail(id) {
-  const m = await api("GET", "/api/missions/" + id);
+async function loadMissionDetail(id, opts) {
+  const m = await api("GET", "/api/missions/" + id, undefined, opts);
   $("mission-detail").innerHTML = `
     <div class="row-inline"><b>${escapeHtml(m.title)}</b> ${badge(m.state)}
-      <span class="muted">${escapeHtml(m.id)}</span></div>
+      <span class="muted mono">${escapeHtml(m.id)}</span></div>
     <div class="row-inline" style="margin-top:6px">
-      <button id="btn-activate" class="primary">${t("mission.activate")}</button>
-      <button id="btn-new-job">${t("mission.newJob")}</button>
+      <button id="btn-activate" class="btn-core">${t("mission.activate")}</button>
+      <button id="btn-new-job" class="pill-btn">${t("mission.newJob")}</button>
     </div>`;
   $("btn-activate") && ($("btn-activate").onclick = () => activateMission(id));
   $("btn-new-job") && ($("btn-new-job").onclick = () => newJobPrompt(id));
@@ -851,16 +2195,15 @@ async function loadMissionDetail(id) {
 }
 
 async function loadJobs(missionId) {
-  const d = await api("GET", "/api/jobs");
-  const jobs = (d.jobs || []).filter((j) => j.mission_id === missionId);
   const el = $("jobs");
-  el.innerHTML = "";
+  el.textContent = "";
+  const jobs = SCENE.jobsByMission[missionId] || [];
   jobs.forEach((j) => {
     const div = document.createElement("button");
     div.type = "button";
     div.className = "item";
-    div.innerHTML = `<span class="t">${escapeHtml(j.title)}</span>
-      <span class="m">${badge(j.state)} · ${escapeHtml(j.executor)} · ${t("job.attempt")} ${j.attempt_no}</span>`;
+    div.innerHTML = `<span class="t">${escapeHtml(j.title)}</span>` +
+      `<span class="m">${badge(j.state)} · ${escapeHtml(j.executor)} · ${t("job.attempt")} ${j.attempt_no}</span>`;
     div.onclick = () => showJob(j);
     el.appendChild(div);
   });
@@ -868,18 +2211,21 @@ async function loadJobs(missionId) {
 
 function showJob(j) {
   selectedJob = j;
-  $("job-card").style.display = "block";
+  SCENE.selectedJob = "job:" + j.id;
+  $("mission-overlay").hidden = false;
+  $("job-overlay").hidden = false;
   renderJobDetail(j.id).catch((e) => toast(t("err.prefix") + e.message));
+  layoutScene();
 }
 
-async function renderJobDetail(jobId) {
-  const j = await api("GET", "/api/jobs/" + jobId);
+async function renderJobDetail(jobId, opts) {
+  const j = await api("GET", "/api/jobs/" + jobId, undefined, opts);
   const actions = [];
   if (j.state === "proposed") {
-    actions.push(`<button class="primary" onclick="requestApproval('${j.id}')">${t("job.requestApproval")}</button>`);
+    actions.push(`<button class="btn-core" onclick="requestApproval('${j.id}')">${t("job.requestApproval")}</button>`);
   }
   if (j.state === "approved") {
-    actions.push(`<button class="primary" onclick="dispatchJob('${j.id}')">${t("job.dispatch")}</button>`);
+    actions.push(`<button class="btn-core" onclick="dispatchJob('${j.id}')">${t("job.dispatch")}</button>`);
   }
   if (j.state === "interrupted_unknown") {
     actions.push(`<button class="bad" onclick="reconcileJob('${j.id}')">${t("job.reconcile")}</button>`);
@@ -891,14 +2237,14 @@ async function renderJobDetail(jobId) {
   let evidenceHtml = "";
   if (["completed_verified", "completed_unverified", "failed", "interrupted_unknown"].includes(j.state)) {
     try {
-      const ev = await api("GET", `/api/jobs/${j.id}/evidence`);
+      const ev = await api("GET", `/api/jobs/${j.id}/evidence`, undefined, opts);
       if (ev.evidence) {
         evidenceHtml = `
-          <h2 style="margin-top:12px">${t("job.evidence")} (${t("job.eventNo")} #${ev.event_seq})</h2>
+          <h3>${t("job.evidence")} (${t("job.eventNo")} #${ev.event_seq})</h3>
           <div class="muted">${t("job.reportStatus")} ${escapeHtml(ev.kind)}</div>
-          <h2 style="margin-top:8px">${t("job.testReport")}</h2>
+          <h3>${t("job.testReport")}</h3>
           <pre class="detail">${escapeHtml(ev.evidence.test_report) || t("job.noTestReport")}</pre>
-          <h2 style="margin-top:8px">${t("job.diff")}</h2>
+          <h3>${t("job.diff")}</h3>
           <pre class="detail">${escapeHtml(ev.evidence.diff)}</pre>`;
       } else {
         evidenceHtml = `<div class="muted" style="margin-top:8px">${escapeHtml(ev.note || t("job.noEvidence"))}</div>`;
@@ -910,13 +2256,13 @@ async function renderJobDetail(jobId) {
 
   $("job-detail").innerHTML = `
     <div class="row-inline"><b>${escapeHtml(j.title)}</b> ${badge(j.state)}
-      <span class="muted">${escapeHtml(j.id)}</span></div>
+      <span class="muted mono">${escapeHtml(j.id)}</span></div>
     <div class="muted" style="margin-top:6px">
       ${t("job.executor")}: ${escapeHtml(j.executor)} · ${t("job.attempt")}: ${j.attempt_no} ·
-      manifest: <code>${escapeHtml(String(j.manifest_hash).slice(0, 12))}…</code>
+      manifest: <span class="tech">${escapeHtml(String(j.manifest_hash).slice(0, 12))}…</span>
     </div>
-    <div class="muted">${t("job.command")} ${escapeHtml(j.command) || "—"}</div>
-    <div class="muted">${t("job.paths")} ${escapeHtml((j.workspace_paths || []).join(", "))} ·
+    <div class="muted">${t("job.command")} <span class="tech">${escapeHtml(j.command) || "—"}</span></div>
+    <div class="muted">${t("job.paths")} <span class="tech">${escapeHtml((j.workspace_paths || []).join(", "))}</span> ·
       ${t("job.actions")} ${escapeHtml((j.actions || []).join(", "))}</div>
     <div class="row-inline" style="margin-top:10px">${actions.join("")}</div>
     ${evidenceHtml}`;
@@ -925,21 +2271,21 @@ async function renderJobDetail(jobId) {
 async function requestApproval(jobId) {
   try {
     await api("POST", "/api/approvals", { job_id: jobId });
-    toast(t("toast.approvalRequested")); refresh();
+    toast(t("toast.approvalRequested"), true); refresh();
   } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
 async function activateMission(id) {
   try {
     await api("POST", "/api/missions/" + id + "/activate");
-    toast(t("toast.missionActivated")); refresh();
+    toast(t("toast.missionActivated"), true); refresh();
   } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
 async function dispatchJob(jobId) {
   try {
     const r = await api("POST", "/api/jobs/" + jobId + "/dispatch");
-    toast(t("toast.dispatchResult") + r.receipt.final_state);
+    toast(t("toast.dispatchResult") + r.receipt.final_state, true);
     refresh();
   } catch (e) { toast(t("err.prefix") + e.message); }
 }
@@ -949,7 +2295,7 @@ async function reconcileJob(jobId) {
   if (!state) return;
   try {
     await api("POST", "/api/jobs/" + jobId + "/reconcile", { final_state: state, note: t("reconcile.note") });
-    toast(t("toast.reconciled")); refresh();
+    toast(t("toast.reconciled"), true); refresh();
   } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
@@ -958,7 +2304,7 @@ function newJobPrompt(missionId) {
   if (!title) return;
   const executor = prompt(t("prompt.executor"), "fake-executor");
   const actions = prompt(t("prompt.actions"), "read_file,run_tests");
-  propose(missionId, title, executor, actions.split(",").map(s=>s.trim()));
+  propose(missionId, title, executor, actions.split(",").map(s => s.trim()));
 }
 
 async function propose(missionId, title, executor, actions) {
@@ -968,18 +2314,31 @@ async function propose(missionId, title, executor, actions) {
       workspace_paths: ["workspace/"], actions,
       proposed_by: "planner",
     });
-    const a = await api("POST", "/api/approvals", { job_id: j.id });
-    toast(t("toast.jobProposed"));
+    await api("POST", "/api/approvals", { job_id: j.id });
+    toast(t("toast.jobProposed"), true);
     refresh();
   } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
+// ----------------------------------------------------
+// APPROVAL GATE
+// ----------------------------------------------------
 async function loadApprovals() {
-  const d = await api("GET", "/api/approvals");
+  const opts = arguments[0];
+  const d = await api("GET", "/api/approvals", undefined, opts);
   const el = $("approvals");
   el.innerHTML = "";
   const pending = (d.approvals || []).filter((a) => a.decision === "requested");
-  if (pending.length === 0) { el.innerHTML = `<div class="muted">${t("approvals.none")}</div>`; return; }
+  $("gate-count").textContent = String(pending.length);
+  $("gate").classList.toggle("glass-flare", pending.length > 0);
+  if (pending.length === 0) {
+    el.innerHTML = `
+      <div class="gate-empty">
+        <div class="ring">✓</div>
+        <div class="t1 disp">${t("approvals.none")}</div>
+      </div>`;
+    return;
+  }
   pending.forEach((a) => {
     const div = document.createElement("div");
     div.className = "approval-card";
@@ -994,15 +2353,30 @@ async function loadApprovals() {
     // existing evidenceHtml convention, which is the allowlist entry for
     // "already-escaped markup held in a variable".
     const cmdSafe = escapeHtml(cmdHtml);
-    div.innerHTML = `<div class="t">${t("approvals.forJob")} <span class="muted">${escapeHtml(a.job_id)}</span></div>
+    div.innerHTML = `<div class="t">${t("approvals.forJob")} <span class="muted mono">${escapeHtml(a.job_id)}</span></div>
       <div class="m">scope: ${escapeHtml(a.scope.executor)} · ${escapeHtml((a.scope.actions||[]).join(", "))}</div>
       ${cmdSafe}
-      <div class="row-inline" style="margin-top:6px">
+      <div class="row-inline" style="margin-top:8px">
         <button class="ok" onclick="decide('${a.id}','granted')">${t("approvals.grant")}</button>
         <button class="bad" onclick="decide('${a.id}','denied')">${t("approvals.reject")}</button>
+      </div>
+      <div class="warnbox" style="margin-top:8px">
+        <div>
+          <div class="wt">${t("approvals.warnTitle")}</div>
+          <div class="wb">${t("approvals.warnBody")}</div>
+        </div>
       </div>`;
     el.appendChild(div);
   });
+}
+
+async function decide(approvalId, decision) {
+  try {
+    await api("POST", "/api/approvals/" + approvalId + "/decide", { decision });
+    toast(decision === "granted" ? t("toast.approved") : t("toast.denied"),
+          decision === "granted");
+    refresh();
+  } catch (e) { toast(t("err.prefix") + e.message); }
 }
 
 function reasonText(reason, fallback) {
@@ -1021,8 +2395,242 @@ function reasonText(reason, fallback) {
   }
 }
 
+// ----------------------------------------------------
+// FLIGHT LOG (event feed)
+// ----------------------------------------------------
+const FEED_ICONS = {
+  mission_created: "M5 12h14M12 5v14",
+  mission_activated: "M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z",
+  job_proposed: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+  job_amended: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+  approval_requested: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+  approval_granted: "M20 6 9 17l-5-5",
+  approval_denied: "M18 6 6 18M6 6l12 12",
+  approval_decision_rejected: "M18 6 6 18M6 6l12 12",
+  dispatch_denied: "M18 6 6 18M6 6l12 12",
+  dispatch_failed: "M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2zM9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05",
+  job_completed_verified: "M20 6 9 17l-5-5",
+  job_completed_unverified: "M12 9v4M12 17h.01M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
+  project_registered: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+  project_removed: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+  tool_registered: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z",
+  tool_removed: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z",
+  "external.tool_call": "M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1zM17 21v-2M19 14V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V10M21 21v-2M3 5V3M4 10a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2a2 2 0 0 1-2 2zM7 5V3",
+};
+
+function feedCategory(kind) {
+  if (String(kind).startsWith("approval")) return "security";
+  if (kind === "dispatch_denied" || kind === "dispatch_failed") return "error";
+  if (kind === "job_completed_unverified" || kind === "knowledge_conflict") return "warn";
+  return "info";
+}
+
+function feedColor(e) {
+  const cat = feedCategory(e.kind);
+  if (cat === "security") return "#ff9a52";
+  if (cat === "error") return "#ff5c7a";
+  if (cat === "warn") return "#ffd166";
+  return "#38e8ff";
+}
+
+const FEED_EVENTS = [];
+
+async function loadFeed() {
+  const opts = arguments[0];
+  const d = await api("GET", "/api/events", undefined, opts);
+  FEED_EVENTS.length = 0;
+  (d.events || []).slice().reverse().forEach((e) => FEED_EVENTS.push(e));
+  renderFeed();
+  const last = FEED_EVENTS[FEED_EVENTS.length - 1];
+  if (last) {
+    $("last-event").textContent = new Date(last.ts).toLocaleTimeString(localeFor());
+  }
+}
+
+let feedCursor = null;
+let feedPlaying = 0;
+
+function renderFeed() {
+  const el = $("feed");
+  el.textContent = "";
+  const filter = $("feed-filter").value;
+  const level = feedPlaying !== 0 ? feedPlaying : feedCursor;
+  FEED_EVENTS.forEach((e, i) => {
+    if (filter !== "all" && feedCategory(e.kind) !== filter) return;
+    const ts = new Date(e.ts).toLocaleTimeString(localeFor());
+    const color = feedColor(e);
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "logcard rise" + (level === i ? " sel" : "");
+    card.style.setProperty("--c", color);
+    const iconPath = FEED_ICONS[e.kind] || "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2";
+    card.innerHTML = `
+      <span class="k"><span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path/></svg></span><span dir="ltr" class="tech">${escapeHtml(e.kind)}</span></span>
+      <span class="ref">#${e.seq} ${escapeHtml(e.kind)}</span>
+      <span class="row2"><span class="mono">${ts}</span><i class="dot"></i></span>`;
+    const pathEl = card.querySelector("path");
+    if (pathEl) pathEl.setAttribute("d", iconPath);
+    card.onclick = () => { feedCursor = (feedCursor === i ? null : i); feedPlaying = 0; renderFeed(); };
+    el.appendChild(card);
+  });
+  if (!el.children.length) {
+    const empty = document.createElement("div");
+    empty.className = "muted";
+    empty.textContent = t("feed.empty");
+    el.appendChild(empty);
+  }
+  const pct = feedCursor === null ? 100 : feedCursor / Math.max(1, FEED_EVENTS.length - 1) * 100;
+  $("scrub-fill").style.width = pct + "%";
+  $("scrub-cursor").style.left = pct + "%";
+  $("scrub-pos").textContent = feedCursor === null ? "LIVE"
+    : new Date(FEED_EVENTS[feedCursor].ts).toLocaleTimeString(localeFor());
+  if (feedFollow) el.scrollLeft = el.scrollWidth;
+}
+
+let feedFollow = true;
+$("feed-follow").addEventListener("click", () => {
+  feedFollow = !feedFollow;
+  $("feed-follow").textContent = feedFollow ? t("log.follow") : t("log.paused");
+  if (feedFollow) {
+    const el = $("feed");
+    el.scrollLeft = el.scrollWidth;
+  }
+});
+
+$("feed-play").addEventListener("click", toggleReplay);
+$("feed-play2").addEventListener("click", toggleReplay);
+function toggleReplay() {
+  if (feedPlaying) {
+    feedPlaying = 0;
+  } else {
+    feedPlaying = 0;
+    feedCursor = FEED_EVENTS.length ? 0 : null;
+    stepReplay();
+    return;
+  }
+  renderFeed();
+}
+function stepReplay() {
+  if (!FEED_EVENTS.length) { feedPlaying = 0; return; }
+  feedPlaying = setInterval(() => {
+    if (feedCursor === null || feedCursor >= FEED_EVENTS.length - 1) {
+      clearInterval(feedPlaying); feedPlaying = 0; return;
+    }
+    feedCursor += 1;
+    renderFeed();
+  }, 1200);
+  renderFeed();
+}
+
+$("feed-filter").addEventListener("change", () => { feedCursor = null; renderFeed(); });
+
+// ----------------------------------------------------
+// OBSERVED TIMELINE
+// ----------------------------------------------------
+const OBS_UNKNOWN = "unknown";
+
+function obsTextSafe(v) {
+  if (v === null || v === undefined) return OBS_UNKNOWN;
+  const s = String(v).trim();
+  return s ? s : OBS_UNKNOWN;
+}
+
+function obsTimeSafe(ts, locale) {
+  if (!ts || ts <= 0) return OBS_UNKNOWN;
+  try {
+    return new Date(ts * 1000).toLocaleTimeString(locale);
+  } catch (e) {
+    return OBS_UNKNOWN;
+  }
+}
+
+function obsRenderState(state) {
+  const el = $("obs-state");
+  if (!el) return;
+  if (state === "unavailable") {
+    el.textContent = t("ui.obsUnavailable");
+    el.style.color = "var(--bad)";
+  } else if (state === "not_configured") {
+    el.textContent = t("ui.obsNotConfigured");
+    el.style.color = "var(--sun)";
+  } else if (state === "none") {
+    el.textContent = t("ui.obsNone");
+    el.style.color = "var(--muted)";
+  } else if (state === "ok") {
+    el.textContent = t("ui.obsOk");
+    el.style.color = "var(--ok)";
+  } else {
+    el.textContent = "";
+    el.style.color = "var(--muted)";
+  }
+}
+
+async function obsIngest() {
+  const msg = $("obs-msg");
+  if (msg) msg.textContent = t("ui.obsDisabledMsg");
+  if (false) {
+    t("ui.obsNeedToken"); t("ui.obsFailed"); t("ui.obsNothingNew"); t("ui.obsAdded");
+  }
+}
+
+async function obsRender(opts) {
+  const list = $("obs-list");
+  if (!list) return;
+  if (!OBS_SOURCE) {
+    obsRenderState("not_configured");
+    list.innerHTML = `<div class="muted">${escapeHtml(t("ui.obsNotConfiguredHint"))}</div>`;
+    return;
+  }
+  try {
+    const d = await api("GET", "/api/events/external", undefined, opts);
+    const events = (d && d.events) || [];
+    list.innerHTML = "";
+    if (events.length === 0) {
+      obsRenderState("none");
+      list.innerHTML = `<div class="muted">${escapeHtml(t("ui.obsEmpty"))}</div>`;
+      return;
+    }
+    obsRenderState("ok");
+    const locale = localeFor();
+    events.slice().reverse().forEach((e) => {
+      const p = e.payload || {};
+      const div = document.createElement("div");
+      div.className = "row";
+      const timeSafe = escapeHtml(obsTimeSafe(p.source_timestamp, locale));
+      const toolSafe = escapeHtml(obsTextSafe(p.tool_name));
+      const srcSafe = escapeHtml(obsTextSafe(p.source));
+      const sessSafe = escapeHtml(obsTextSafe(p.session_id));
+      const notes = Array.isArray(p.notes) ? p.notes : [];
+      const noteSafe = escapeHtml(notes.join(" · ") || t("ui.obsNoNotes"));
+      const toolNameSafe = obsTextSafe(p.tool_name);
+      const badgeLabelSafe = escapeHtml(t("ui.obsUnattributed"));
+      const badgeMarkupSafe = toolNameSafe === OBS_UNKNOWN
+        ? `<span class="badge b-failed">${badgeLabelSafe}</span> `
+        : "";
+      const rowMarkupSafe =
+        `<span class="ts">${timeSafe}</span> ${badgeMarkupSafe}` +
+        `<span class="kind" dir="ltr">${toolSafe}</span> ` +
+        `<span class="muted" dir="ltr">${srcSafe}</span> ` +
+        `<span class="muted" dir="ltr">${sessSafe}</span> ` +
+        `<span class="muted">${noteSafe}</span>`;
+      div.innerHTML = rowMarkupSafe;
+      list.appendChild(div);
+    });
+  } catch (e) {
+    obsRenderState("unavailable");
+    list.innerHTML = `<div class="muted">${escapeHtml(t("ui.obsUnavailableHint"))}</div>`;
+    uiLog("warn", "failed to read external events", { detail: _errText(e) });
+  }
+}
+
+$("obs-ingest").addEventListener("click", obsIngest);
+
+// ----------------------------------------------------
+// PROJECTS
+// ----------------------------------------------------
 async function loadProjects() {
-  const d = await api("GET", "/api/projects");
+  const opts = arguments[0];
+  const d = await api("GET", "/api/projects", undefined, opts);
   const el = $("proj-list");
   el.innerHTML = "";
   const rows = d.projects || [];
@@ -1038,7 +2646,7 @@ async function loadProjects() {
       p.read_only ? t("ui.readOnly") : "",
     ].filter(Boolean).join(" · ");
     div.innerHTML = `<div class="t">${escapeHtml(p.name)}</div>
-      <div class="m">${escapeHtml(p.canonical_root)}</div>
+      <div class="m tech">${escapeHtml(p.canonical_root)}</div>
       ${badges ? `<div class="m">${badges}</div>` : ""}
       <div class="row-inline">
         <button type="button" class="pill">${t("ui.remove")}</button>
@@ -1061,6 +2669,36 @@ async function loadProjects() {
   });
 }
 
+function _labelProjectForm() {
+  $("proj-name").setAttribute("aria-label", t("ui.name"));
+  $("proj-name").placeholder = t("ui.name");
+  $("proj-root").setAttribute("aria-label", t("ui.root"));
+  $("proj-root").placeholder = t("ui.rootPlaceholder");
+  $("proj-env").setAttribute("aria-label", t("ui.environment"));
+  $("proj-add").textContent = t("ui.register");
+}
+
+$("proj-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const msg = $("proj-msg");
+  msg.textContent = "";
+  try {
+    await api("POST", "/api/projects", {
+      name: $("proj-name").value.trim(),
+      environment: $("proj-env").value,
+      root: $("proj-root").value.trim(),
+    });
+    $("proj-root").value = "";
+    toast(t("ui.registered"), true);
+    await loadProjects();
+  } catch (e) {
+    msg.textContent = reasonText(e.reason, _errText(e));
+  }
+});
+
+// ----------------------------------------------------
+// TOOLS
+// ----------------------------------------------------
 function _toolConfidenceBadgeHtml(tool) {
   if (tool.confidence === "exact") return "";
   if (tool.confidence === "unknown") {
@@ -1142,7 +2780,8 @@ function renderDiscovery(d) {
 }
 
 async function loadTools() {
-  const d = await api("GET", "/api/tools/registry");
+  const opts = arguments[0];
+  const d = await api("GET", "/api/tools/registry", undefined, opts);
   const el = $("tool-list");
   el.innerHTML = "";
   const rows = (d && d.tools) || [];
@@ -1203,343 +2842,14 @@ async function runDiscovery() {
   }
 }
 
-function _labelProjectForm() {
-  $("proj-name").setAttribute("aria-label", t("ui.name"));
-  $("proj-name").placeholder = t("ui.name");
-  $("proj-root").setAttribute("aria-label", t("ui.root"));
-  $("proj-root").placeholder = t("ui.rootPlaceholder");
-  $("proj-env").setAttribute("aria-label", t("ui.environment"));
-  $("proj-add").textContent = t("ui.register");
-}
-
 $("tool-discover").addEventListener("click", () => {
   runDiscovery().catch((e) =>
     uiLog("error", "tool discovery failed", { detail: _errText(e) }));
 });
 
-$("proj-form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const msg = $("proj-msg");
-  msg.textContent = "";
-  try {
-    await api("POST", "/api/projects", {
-      name: $("proj-name").value.trim(),
-      environment: $("proj-env").value,
-      root: $("proj-root").value.trim(),
-    });
-    $("proj-root").value = "";
-    toast(t("ui.registered"));
-    await loadProjects();
-  } catch (e) {
-    msg.textContent = reasonText(e.reason, _errText(e));
-  }
-});
-
-async function decide(approvalId, decision) {
-  try {
-    await api("POST", "/api/approvals/" + approvalId + "/decide", { decision });
-    toast(decision === "granted" ? t("toast.approved") : t("toast.denied"));
-    refresh();
-  } catch (e) { toast(t("err.prefix") + e.message); }
-}
-
-const OBS_UNKNOWN = "unknown";
-
-function obsTextSafe(v) {
-  if (v === null || v === undefined) return OBS_UNKNOWN;
-  const s = String(v).trim();
-  return s ? s : OBS_UNKNOWN;
-}
-
-function obsTimeSafe(ts, locale) {
-  if (!ts || ts <= 0) return OBS_UNKNOWN;
-  try {
-    return new Date(ts * 1000).toLocaleTimeString(locale);
-  } catch (e) {
-    return OBS_UNKNOWN;
-  }
-}
-
-function obsRenderState(state, locale) {
-  const el = $("obs-state");
-  if (!el) return;
-  if (state === "unavailable") {
-    el.textContent = t("ui.obsUnavailable");
-    el.style.color = "var(--bad)";
-  } else if (state === "none") {
-    el.textContent = t("ui.obsNone");
-    el.style.color = "var(--muted)";
-  } else if (state === "ok") {
-    el.textContent = t("ui.obsOk");
-    el.style.color = "var(--muted)";
-  } else {
-    el.textContent = "";
-    el.style.color = "var(--muted)";
-  }
-}
-
-async function obsIngest() {
-  const btn = $("obs-ingest");
-  const msg = $("obs-msg");
-  btn.disabled = true;
-  msg.textContent = "";
-  if (!TOKEN) {
-    msg.textContent = t("ui.obsNeedToken");
-    btn.disabled = false;
-    return;
-  }
-  try {
-    const d = await api("POST", "/api/events/ingest",
-      { source: OBS_SOURCE, cursor: OBS_CURSOR, limit: 200 });
-    OBS_CURSOR = d.cursor || OBS_CURSOR;
-    obsRenderState(d.status, localeFor());
-    const added = d.added || 0;
-    if (d.status === "unavailable") {
-      msg.textContent = t("ui.obsUnavailable");
-    } else if (added === 0) {
-      msg.textContent = t("ui.obsNothingNew");
-    } else {
-      msg.textContent = t("ui.obsAdded").replace("{n}", String(added));
-    }
-    await obsRender();
-  } catch (e) {
-    msg.textContent = reasonText(e.reason, t("ui.obsFailed"));
-    obsRenderState("unavailable", localeFor());
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function obsRender() {
-  const d = await api("GET", "/api/events/external");
-  const list = $("obs-list");
-  list.innerHTML = "";
-  const events = (d.events || []).slice().reverse();
-  if (events.length === 0) {
-    list.textContent = t("ui.obsEmpty");
-    return;
-  }
-  const locale = localeFor();
-  events.forEach((e) => {
-    const p = e.payload || {};
-    const div = document.createElement("div");
-    div.className = "row";
-    const timeSafe = escapeHtml(obsTimeSafe(p.source_timestamp, locale));
-    const toolSafe = escapeHtml(obsTextSafe(p.tool_name));
-    const srcSafe = escapeHtml(obsTextSafe(p.source));
-    const sessSafe = escapeHtml(obsTextSafe(p.session_id));
-    const notes = Array.isArray(p.notes) ? p.notes : [];
-    const noteSafe = escapeHtml(notes.join(" · ") || t("ui.obsNoNotes"));
-    const toolNameSafe = obsTextSafe(p.tool_name);
-    const badgeLabelSafe = escapeHtml(t("ui.obsUnattributed"));
-    const badgeMarkupSafe = toolNameSafe === OBS_UNKNOWN
-      ? `<span class="badge b-failed">${badgeLabelSafe}</span> `
-      : "";
-    const rowMarkupSafe =
-      `<span class="ts">${timeSafe}</span> ${badgeMarkupSafe}` +
-      `<span class="kind" dir="ltr">${toolSafe}</span> ` +
-      `<span class="muted" dir="ltr">${srcSafe}</span> ` +
-      `<span class="muted" dir="ltr">${sessSafe}</span> ` +
-      `<span class="muted">${noteSafe}</span>`;
-    div.innerHTML = rowMarkupSafe;
-    list.appendChild(div);
-  });
-}
-
-$("obs-ingest").addEventListener("click", obsIngest);
-
-async function loadFeed() {
-  const d = await api("GET", "/api/events");
-  const el = $("feed");
-  el.innerHTML = "";
-  (d.events || []).slice().reverse().forEach((e) => {
-    const div = document.createElement("div");
-    div.className = "row";
-    const ts = new Date(e.ts).toLocaleTimeString(localeFor());
-    div.innerHTML = `<span class="ts">${ts}</span><span class="seq">#${e.seq}</span> <span class="kind">${e.kind}</span>`;
-    el.appendChild(div);
-  });
-  if (!el.children.length) el.innerHTML = `<div class="muted">${t("feed.empty")}</div>`;
-}
-
-async function refresh() {
-  try {
-    await Promise.all([
-      loadStatus(), loadMissions(), loadApprovals(),
-      loadFeed(), loadProjects(), loadTools(),
-    ]);
-    DATA_ON_SCREEN = true;
-    if (selectedMission) loadMissionDetail(selectedMission.id);
-    if (selectedJob) {
-      renderJobDetail(selectedJob.id).catch((e) =>
-        uiLog("error", "job detail re-render failed", { detail: _errText(e) }));
-    }
-  } catch (e) {
-    uiLog("error", "refresh failed", { detail: _errText(e) });
-  }
-}
-
 // ----------------------------------------------------
-// 3D GALAXY SCENE
+// WORKFLOWS
 // ----------------------------------------------------
-function initGalaxy() {
-  if (!window.THREE) return;
-  const canvas = document.getElementById("bg-canvas");
-  if (!canvas) return;
-  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-  camera.position.z = 20;
-
-  // Add sun sphere
-  const sunGeo = new THREE.SphereGeometry(1, 32, 32);
-  const sunMat = new THREE.MeshBasicMaterial({color: 0xffb84d, transparent: true, opacity: 0.9});
-  const sun = new THREE.Mesh(sunGeo, sunMat);
-  scene.add(sun);
-
-  // Add rings
-  const ringGroup = new THREE.Group();
-  [[1.2,0.3,0],[1.1,-0.9,0.5],[1.3,1.1,-0.4],[1.42,0.1,1.2]].forEach((arr, i) => {
-    const geo = new THREE.TorusGeometry(1, 0.006, 8, 160);
-    const mat = new THREE.MeshBasicMaterial({color: (i%2) ? 0xffd98a : 0xffb06a, transparent: true, opacity: 0.25});
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.scale.set(arr[0], arr[0], arr[0]);
-    mesh.rotation.set(arr[1] + Math.PI/2, arr[2], 0);
-    ringGroup.add(mesh);
-  });
-  scene.add(ringGroup);
-
-  // simple starfield
-  const starsGeo = new THREE.BufferGeometry();
-  const starsArray = new Float32Array(3000);
-  for(let i=0; i<3000; i++) {
-    starsArray[i] = (Math.random() - 0.5) * 50;
-  }
-  starsGeo.setAttribute('position', new THREE.BufferAttribute(starsArray, 3));
-  const starsMat = new THREE.PointsMaterial({color: 0xa79ecb, size: 0.05, transparent: true, opacity: 0.6});
-  const starField = new THREE.Points(starsGeo, starsMat);
-  scene.add(starField);
-
-  // Animation layout
-  window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-  });
-
-  const animate = function() {
-    requestAnimationFrame(animate);
-    ringGroup.children.forEach((c, i) => {
-      c.rotation.z += 0.002 * (i%2 ? 1 : -1) * (1 + i*0.4);
-    });
-    starField.rotation.y += 0.0005;
-    starField.rotation.x += 0.0002;
-    renderer.render(scene, camera);
-  };
-  animate();
-}
-initGalaxy();
-
-
-window.decide = decide;
-window.requestApproval = requestApproval;
-window.dispatchJob = dispatchJob;
-window.reconcileJob = reconcileJob;
-window.gfxDelete = gfxDelete;
-window.gfxRender = gfxRender;
-window.wfRun = wfRun;
-
-setLang(loadLang());
-applyI18n();
-if (typeof _labelProjectForm === "function") _labelProjectForm();
-$("diag-clear").addEventListener("click", uiLogClear);
-$("btn-connect").onclick = async () => { await connect(); refresh(); };
-$("lang-select").addEventListener("change", (e) => {
-  setLang(e.target.value);
-  toast(t("ui.saved"));
-});
-$("btn-mission").onclick = async () => {
-  const title = $("new-mission").value.trim();
-  if (!title) return;
-  try { await api("POST", "/api/missions", { title }); $("new-mission").value = ""; toast(t("toast.missionCreated")); refresh(); }
-  catch (e) { toast(t("err.prefix") + e.message); }
-};
-
-// Tab switching
-function switchTab(tabName) {
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.tab === tabName);
-  });
-  document.querySelectorAll(".tab-panel").forEach((panel) => {
-    panel.classList.toggle("active", panel.id === "panel-" + tabName);
-  });
-}
-
-document.querySelectorAll(".tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
-});
-
-// Feed filter
-$("feed-filter").addEventListener("change", (e) => {
-  const level = e.target.value;
-  const feed = $("feed");
-  if (level === "all") {
-    feed.querySelectorAll(".row").forEach((row) => { row.style.display = ""; });
-  } else {
-    feed.querySelectorAll(".row").forEach((row) => {
-      const kind = row.querySelector(".kind");
-      const text = kind ? kind.textContent : "";
-      const match = level === "info" && text.includes("INFO") ||
-                    level === "warn" && text.includes("WARN") ||
-                    level === "error" && text.includes("ERROR") ||
-                    level === "security" && text.includes("APPROVAL");
-      row.style.display = match ? "" : "none";
-    });
-  }
-});
-
-// Feed follow toggle
-let feedFollow = true;
-$("feed-follow").addEventListener("click", () => {
-  feedFollow = !feedFollow;
-  $("feed-follow").textContent = feedFollow ? "Follow Live" : "Paused";
-  if (feedFollow) {
-    const feed = $("feed");
-    feed.scrollTop = feed.scrollHeight;
-  }
-});
-
-// Diagnostics tray toggle
-$("tray-header").addEventListener("click", () => {
-  const tray = $("diagnostics-tray");
-  tray.classList.toggle("collapsed");
-});
-
-// Keyboard shortcuts
-document.addEventListener("keydown", (e) => {
-  if (e.altKey && e.key >= "1" && e.key <= "4") {
-    const tabs = ["approvals", "evidence", "feed", "observed"];
-    const idx = parseInt(e.key) - 1;
-    if (idx < tabs.length) switchTab(tabs[idx]);
-  }
-  if (e.key === "a" || e.key === "A") {
-    const activePanel = document.querySelector(".tab-panel.active");
-    if (activePanel && activePanel.id === "panel-approvals") {
-      const grantBtn = activePanel.querySelector(".ok");
-      if (grantBtn) grantBtn.click();
-    }
-  }
-  if (e.key === "r" || e.key === "R") {
-    const activePanel = document.querySelector(".tab-panel.active");
-    if (activePanel && activePanel.id === "panel-approvals") {
-      const rejectBtn = activePanel.querySelector(".bad");
-      if (rejectBtn) rejectBtn.click();
-    }
-  }
-});
-
-// Workflows
 let wfSelectedTemplate = null;
 
 async function loadWorkflows() {
@@ -1555,18 +2865,20 @@ async function loadWorkflows() {
       return '<div class="item" data-wf-id="' + wf.id + '">' +
         '<span class="t">' + escapeHtml(wf.title) + '</span>' +
         '<span class="m">v' + wf.version + ' | ' + nodeCount + ' nodes | ' + escapeHtml(wf.default_executor) + '</span>' +
-        '<button class="ok" style="margin-top:4px" onclick="wfRun(\'' + wf.id + '\')">' + t("wf.runBtn") + '</button>' +
+        '<button class="ok" style="margin-top:6px" onclick="wfRun(\'' + wf.id + '\')">' + t("wf.runBtn") + '</button>' +
         '</div>';
     }).join("");
-  } catch (e) { /* silent */ }
+  } catch (e) {
+    uiLog("warn", "failed to load workflows", { detail: _errText(e) });
+  }
 }
 
 function wfRun(templateId) {
   wfSelectedTemplate = templateId;
-  $("wf-run-card").style.display = "";
+  $("wf-run-card").hidden = false;
   $("wf-run-msg").textContent = "";
   $("wf-run-inputs").value = "{}";
-  $("wf-run-card").scrollIntoView({ behavior: "smooth" });
+  $("wf-run-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 $("wf-create").addEventListener("click", async () => {
@@ -1600,15 +2912,15 @@ $("wf-run").addEventListener("click", async () => {
   try {
     const res = await api("POST", "/api/workflows/" + wfSelectedTemplate + "/execute", { inputs });
     $("wf-run-msg").textContent = t("wf.executed") + " (execution: " + res.id + ")";
-    $("wf-exec-card").style.display = "";
+    $("wf-exec-card").hidden = false;
     $("wf-exec-detail").textContent = JSON.stringify(res, null, 2);
     loadWorkflows();
   } catch (e) { $("wf-run-msg").textContent = t("wf.executeFailed") + ": " + e.message; }
 });
 
-// Simple Graphics
-let gfxSelected = null;
-
+// ----------------------------------------------------
+// GRAPHICS
+// ----------------------------------------------------
 async function loadGraphics() {
   try {
     const res = await api("GET", "/api/graphics");
@@ -1621,15 +2933,17 @@ async function loadGraphics() {
       const hint = g.config && g.config.shape ? escapeHtml(g.config.shape) : "";
       const delBtn = g.state === "deleted"
         ? ""
-        : '<button class="bad" style="margin-top:4px" onclick="gfxDelete(\'' + g.id + '\')">Remove</button>';
+        : '<button class="bad" style="margin-top:6px" onclick="gfxDelete(\'' + g.id + '\')">Remove</button>';
       return '<div class="item" data-gfx-id="' + g.id + '">' +
         '<span class="t">' + escapeHtml(g.title) + '</span>' +
         '<span class="m">' + g.kind + (hint ? " | " + hint : "") +
         ' <span class="badge">' + (g.state || "active") + '</span></span>' +
-        '<button class="ok" style="margin-top:4px" onclick="gfxRender(\'' + g.id + '\')">Render</button>' + delBtn +
+        '<button class="ok" style="margin-top:6px" onclick="gfxRender(\'' + g.id + '\')">Render</button>' + delBtn +
         '</div>';
     }).join("");
-  } catch (e) { /* silent */ }
+  } catch (e) {
+    uiLog("warn", "failed to load graphics", { detail: _errText(e) });
+  }
 }
 
 async function gfxCreate() {
@@ -1648,12 +2962,11 @@ async function gfxCreate() {
 }
 
 async function gfxRender(gid) {
-  gfxSelected = gid;
   try {
     const res = await api("POST", "/api/graphics/" + gid + "/render");
     $("gfx-svg").innerHTML = res.svg;
-    $("gfx-preview").style.display = "";
-    $("gfx-preview").scrollIntoView({ behavior: "smooth" });
+    $("gfx-preview").hidden = false;
+    $("gfx-preview").scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (e) { $("gfx-msg").textContent = "Render failed: " + e.message; }
 }
 
@@ -1666,24 +2979,164 @@ async function gfxDelete(gid) {
 
 $("gfx-create").addEventListener("click", gfxCreate);
 
-function escapeHtml(s) {
-  const d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
+// ----------------------------------------------------
+// VIEWS / REFRESH / BOOT
+// ----------------------------------------------------
+let currentView = "home";
+
+function switchView(name) {
+  currentView = name;
+  document.querySelectorAll(".navi[data-view]").forEach((btn) => {
+    btn.classList.toggle("on", btn.dataset.view === name);
+  });
+  document.querySelectorAll(".view").forEach((sec) => {
+    sec.classList.toggle("active", sec.id === "view-" + name);
+  });
+  if (name === "home") resizeScene();
+  if (!TOKEN) return;
+  if (name === "workflows") {
+    loadWorkflows().catch((e) => uiLog("warn", "workflows load failed", { detail: _errText(e) }));
+  } else if (name === "graphics") {
+    loadGraphics().catch((e) => uiLog("warn", "graphics load failed", { detail: _errText(e) }));
+  } else if (name === "observed") {
+    obsRender().catch((e) => uiLog("warn", "observed load failed", { detail: _errText(e) }));
+  }
 }
+
+document.querySelectorAll(".navi[data-view]").forEach((btn) => {
+  btn.addEventListener("click", () => switchView(btn.dataset.view));
+});
+
+$("scene-search").addEventListener("input", (e) => {
+  SCENE.query = e.target.value;
+  placeOverlays();
+});
+$("scene-recenter").addEventListener("click", () => {
+  SCENE.query = "";
+  $("scene-search").value = "";
+  SCENE.pins = {}; // glide everything back to the computed layout
+  selectMission(null);
+  hideSceneHint();
+});
+$("mission-close").addEventListener("click", () => selectMission(null));
+$("job-close").addEventListener("click", () => {
+  SCENE.selectedJob = null;
+  $("job-overlay").hidden = true;
+  layoutScene();
+});
+
+let refreshGeneration = 0;
+let refreshAbortController = null;
+
+async function refresh() {
+  if (refreshAbortController) {
+    try { refreshAbortController.abort(); } catch (e) { /* ignore */ }
+  }
+  refreshAbortController = new AbortController();
+  const gen = ++refreshGeneration;
+  const signal = refreshAbortController.signal;
+
+  try {
+    await Promise.all([
+      loadStatus(), loadMissions(), loadApprovals(),
+      loadFeed(), loadProjects(), loadTools(),
+    ]);
+
+    if (gen !== refreshGeneration || signal.aborted) {
+      return;
+    }
+
+    DATA_ON_SCREEN = true;
+    LAST_SUCCESS_TIME = Date.now();
+    setConnectionState("connected");
+
+    if (selectedMission) {
+      loadMissionDetail(selectedMission.id, { signal }).catch((e) => {
+        if (e.name !== "AbortError") {
+          uiLog("warn", "mission detail load failed", { detail: _errText(e) });
+        }
+      });
+    }
+    if (selectedJob) {
+      renderJobDetail(selectedJob.id, { signal }).catch((e) => {
+        if (e.name !== "AbortError") {
+          uiLog("warn", "job detail re-render failed", { detail: _errText(e) });
+        }
+      });
+    }
+  } catch (e) {
+    if (gen !== refreshGeneration || signal.aborted || e.name === "AbortError") {
+      return;
+    }
+    handleRefreshError(e);
+  }
+}
+
+window.decide = decide;
+window.requestApproval = requestApproval;
+window.dispatchJob = dispatchJob;
+window.reconcileJob = reconcileJob;
+window.gfxDelete = gfxDelete;
+window.gfxRender = gfxRender;
+window.wfRun = wfRun;
+
+setLang(loadLang());
+applyI18n();
+if (typeof _labelProjectForm === "function") _labelProjectForm();
+$("diag-clear").addEventListener("click", uiLogClear);
+$("btn-connect").onclick = async () => {
+  try {
+    await connect();
+    refresh();
+  } catch (e) {
+    toast(t("err.prefix") + _safeSanitize(e.message));
+  }
+};
+$("lang-select").addEventListener("change", (e) => {
+  setLang(e.target.value);
+  toast(t("ui.saved"), true);
+});
+$("btn-mission").onclick = async () => {
+  const title = $("new-mission").value.trim();
+  if (!title) return;
+  try { await api("POST", "/api/missions", { title }); $("new-mission").value = ""; toast(t("toast.missionCreated"), true); refresh(); }
+  catch (e) { toast(t("err.prefix") + e.message); }
+};
+
+let resizeTimer = 0;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(resizeScene, 120);
+});
+
+startScene();
+
+let pollCycle = 0;
 
 (async () => {
   if (TOKEN) {
     try {
       await refresh();
-      loadWorkflows();
-      loadGraphics();
+      loadWorkflows().catch((e) => uiLog("warn", "workflows load failed", { detail: _errText(e) }));
+      loadGraphics().catch((e) => uiLog("warn", "graphics load failed", { detail: _errText(e) }));
     } catch (e) {
       uiLog("error", "initial load failed", { detail: _errText(e) });
     }
+  } else {
+    setConnectionState("token_required");
   }
-  else { $("conn").textContent = t("conn.needToken"); }
-  setInterval(() => { if (TOKEN) { refresh(); loadWorkflows(); loadGraphics(); } }, 4000);
+
+  setInterval(() => {
+    if (!TOKEN) return;
+    pollCycle++;
+    refresh();
+    if (pollCycle % 3 === 0 || currentView === "workflows") {
+      loadWorkflows().catch((e) => uiLog("warn", "workflows load failed", { detail: _errText(e) }));
+    }
+    if (pollCycle % 3 === 0 || currentView === "graphics") {
+      loadGraphics().catch((e) => uiLog("warn", "graphics load failed", { detail: _errText(e) }));
+    }
+  }, 4000);
 })();
 </script>
 </body>
