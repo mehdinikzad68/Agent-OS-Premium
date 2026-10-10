@@ -18,3 +18,13 @@ export const hexA = (hex, alpha) => {
   const n = parseInt(h, 16);
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 };
+
+// Run state colors (skill 06 execution states).
+export const RUN_STATE_COLOR = {
+  queued: "#6b7fa6",
+  running: STATUS_COLOR.running,
+  waiting: STATUS_COLOR.awaiting,
+  succeeded: STATUS_COLOR.complete,
+  failed: "#ff5c7a",
+  cancelled: "#6b7fa6",
+};

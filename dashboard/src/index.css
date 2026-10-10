@@ -1,23 +1,7 @@
-@import"https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Hind:wght@400;500;600&family=Vazirmatn:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap";
-
-/*
-  Optional self-hosted fonts. To go fully offline, drop the WOFF2 files into
-  /public/fonts/ and uncomment this block (keep or remove the @import above).
-  Weights match the Google Fonts request exactly.
-
-@font-face { font-family: "Chakra Petch"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/chakra-petch-500.woff2") format("woff2"); }
-@font-face { font-family: "Chakra Petch"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/chakra-petch-600.woff2") format("woff2"); }
-@font-face { font-family: "Chakra Petch"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/chakra-petch-700.woff2") format("woff2"); }
-@font-face { font-family: "Hind"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/hind-400.woff2") format("woff2"); }
-@font-face { font-family: "Hind"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/hind-500.woff2") format("woff2"); }
-@font-face { font-family: "Hind"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/hind-600.woff2") format("woff2"); }
-@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/vazirmatn-400.woff2") format("woff2"); }
-@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/vazirmatn-500.woff2") format("woff2"); }
-@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/vazirmatn-600.woff2") format("woff2"); }
-@font-face { font-family: "Vazirmatn"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/vazirmatn-700.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/jetbrains-mono-400.woff2") format("woff2"); }
-@font-face { font-family: "JetBrains Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/jetbrains-mono-500.woff2") format("woff2"); }
-*/
+/* Phase 9: self-hosted fonts. The Google Fonts CDN @import was replaced by
+   ./fonts.css — the same files/unicode-ranges, downloaded to public/fonts/.
+   No network font request happens anymore; rendering is unchanged. */
+@import"./fonts.css";
 
 @tailwind base;
 @tailwind components;
@@ -282,8 +266,69 @@ body {
   color:#fff!important;
 }
 
+/* Capability-gating explanation on an unavailable nav entry
+   (skill 07: shown WITH a reason, never silently hidden). */
+.nav-why {
+  font-size: 10px;
+  line-height: 1.25;
+  color: #ffd166;
+  opacity: .9;
+}
+.navi:disabled:hover {
+  color: var(--mu) !important;
+}
+
 .btn-core {
   background:linear-gradient(180deg,#9af7ff,#1fc6e6);
   color:#00222c;
   box-shadow:0 0 24px -6px #38e8ffcc;
+}
+
+/* Visible keyboard focus (accessibility requirement) */
+:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
+}
+
+/* MOCK badge (skill 05: demo data must be labeled) */
+.mock-tag {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 209, 102, 0.5);
+  color: #ffd166;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+}
+
+/* Subagent cluster badge + satellite nodes (skill 06).
+   Runtime nodes stay visually subordinate to the
+   central hologram: small, dim, thin. */
+.cluster-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 232, 255, 0.35);
+  background: rgba(2, 10, 20, 0.85);
+  color: #c9e3ee;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.cluster-badge:hover {
+  background: rgba(56, 232, 255, 0.12);
+  border-color: rgba(56, 232, 255, 0.6);
+}
+.cluster-node {
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.cluster-node:hover {
+  transform: translate(-50%, -50%) scale(1.06);
 }

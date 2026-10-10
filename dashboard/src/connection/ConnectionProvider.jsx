@@ -1,5 +1,31 @@
-import React, { createContext, useState, useEffect, useCallback, useContext } from "react";
-import { api, registerTokenProvider } from "../api/client";
+// Connection state machine for the Agent OS backend.
+//
+// Ported from the WSL canonical repo (dashboard/src/connection/ConnectionProvider.jsx)
+// with two deliberate deviations, both documented at the point they apply:
+//   1. SECURITY: the token is kept in sessionStorage by default. `remember`
+//      (localStorage) is opt-in, because the backend is loopback-only and a
+//      persistent token on disk is a larger blast radius than a session one.
+//   2. The `demo` state is the default when no token exists — the UI must show
+//      demo data as demo (skill 05 / skill 08 labelling), never as live.
+//
+// States (drives the Header badge):
+//   demo            no token -> the mock adapter is in charge, no network
+//   connecting      token present, first ping in flight
+//   connected       last ping succeeded
+//   stale           a later ping failed but we were once connected
+//   token_required  401 -> the token is missing/wrong
+//   forbidden       403 -> authenticated but not allowed
+//   unavailable     5xx -> the service is up but erroring
+//   disconnected    network-level failure (backend not running / unreachable)
+
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useCallback,
+  useContext,
+} from "react";
+import { api, registerTokenProvider } from "../api/client.js";
 
 export const ConnectionContext = createContext(null);
 
@@ -7,41 +33,70 @@ export function useConnection() {
   return useContext(ConnectionContext);
 }
 
-export function ConnectionProvider({ children }) {
-  const [token, setTokenState] = useState(() => {
-    return sessionStorage.getItem("agent_os_token") || localStorage.getItem("agent_os_token") || "";
-  });
+const TOKEN_KEY = "agent_os_token";
 
-  const [state, setState] = useState(() => token ? "connecting" : "demo");
+/** Read a stored token. sessionStorage first (session-scoped, the default),
+ *  then localStorage (only ever written when the user opts into "remember"). */
+function readStoredToken() {
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function clearStoredToken() {
+  try {
+    sessionStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage unavailable — nothing to clear */
+  }
+}
+
+function writeStoredToken(token, remember) {
+  try {
+    // Default is sessionStorage: the token dies with the tab. A persistent
+    // token is only written when the user explicitly asks for it.
+    if (remember) {
+      localStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.removeItem(TOKEN_KEY);
+    } else {
+      sessionStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    /* storage unavailable — the token still works for this render tree */
+  }
+}
+
+export function ConnectionProvider({ children }) {
+  const [token, setTokenState] = useState(readStoredToken);
+  const [state, setState] = useState(() => (readStoredToken() ? "connecting" : "demo"));
   const [lastSuccessTime, setLastSuccessTime] = useState(null);
 
-  // Sync token to API client
+  // Sync token into the API client's provider (kept out of module state).
   useEffect(() => {
     registerTokenProvider(() => token);
   }, [token]);
 
   const connect = useCallback((newToken, remember) => {
-    setTokenState(newToken);
-    if (!newToken) {
-      sessionStorage.removeItem("agent_os_token");
-      localStorage.removeItem("agent_os_token");
+    const trimmed = (newToken || "").trim();
+    if (!trimmed) {
+      setTokenState("");
+      clearStoredToken();
       setState("demo");
+      setLastSuccessTime(null);
       return;
     }
-    if (remember) {
-      localStorage.setItem("agent_os_token", newToken);
-      sessionStorage.removeItem("agent_os_token");
-    } else {
-      sessionStorage.setItem("agent_os_token", newToken);
-      localStorage.removeItem("agent_os_token");
-    }
+    setTokenState(trimmed);
+    writeStoredToken(trimmed, remember);
     setState("connecting");
   }, []);
 
   const disconnect = useCallback(() => {
     setTokenState("");
-    sessionStorage.removeItem("agent_os_token");
-    localStorage.removeItem("agent_os_token");
+    clearStoredToken();
     setState("demo");
     setLastSuccessTime(null);
   }, []);
@@ -60,30 +115,37 @@ export function ConnectionProvider({ children }) {
       } else if (e.status >= 500) {
         setState("unavailable");
       } else {
-        setState((prev) => prev === "connected" || prev === "stale" ? "stale" : "disconnected");
+        // Once connected, a transient failure is "stale" (we know the service
+        // existed) rather than a flat "disconnected".
+        setState((prev) =>
+          prev === "connected" || prev === "stale" ? "stale" : "disconnected"
+        );
       }
     }
   }, [token]);
 
+  // First ping whenever we enter "connecting".
   useEffect(() => {
     if (state === "connecting") {
       pingStatus();
     }
   }, [state, pingStatus]);
 
+  // Keep-alive ping while a token exists and the tab is visible.
   useEffect(() => {
     if (!token) return;
-    const interval = setInterval(() => {
-      if (!document.hidden) {
-        pingStatus();
-      }
+    const iv = setInterval(() => {
+      if (!document.hidden) pingStatus();
     }, 8000);
-    return () => clearInterval(interval);
+    return () => clearInterval(iv);
   }, [token, pingStatus]);
 
+  const value = React.useMemo(
+    () => ({ token, state, lastSuccessTime, connect, disconnect }),
+    [token, state, lastSuccessTime, connect, disconnect]
+  );
+
   return (
-    <ConnectionContext.Provider value={{ token, state, lastSuccessTime, connect, disconnect }}>
-      {children}
-    </ConnectionContext.Provider>
+    <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>
   );
 }

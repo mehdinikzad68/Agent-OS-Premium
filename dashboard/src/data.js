@@ -1,7 +1,11 @@
+// Provenance label + approver identity (carried over from the WSL canonical
+// repo so the connection-layer commit's changes survive the replacement).
+// DATA_SOURCE is what the UI displays as its data provenance; the real value
+// is decided by the adapter in use (see adapter/agentOsAdapter.js).
 export const DATA_SOURCE = "demo";
 export const APPROVER = { name: "AIMatrixPedia", initials: "AM" };
 
-// Static demo data (minified names in bundle: Bc, Ec, Nc, Oc, Uc).
+// Static demo data (minified names in bundle: Bc, Ec, Nc, Uc).
 // Values copied verbatim from the bundle.
 
 export { T } from "./i18n.js";
@@ -159,81 +163,6 @@ export const APPROVALS = [
       ["+", "<meta name=\"description\" content=\"ISO-certified reagents…\">"],
       [" ", "<link rel=\"canonical\" href=\"/products/lab-reagents\">"],
     ],
-  },
-];
-
-// Oc
-export const HISTORY = [
-  {
-    t: "17:31",
-    kind: "code",
-    agent: "dsh",
-    ev: {
-      en: "Code change",
-      fa: "تغییر کد",
-    },
-    ref: "dsh-agent",
-  },
-  {
-    t: "17:34",
-    kind: "box",
-    agent: "docker",
-    ev: {
-      en: "Container build",
-      fa: "ساخت کانتینر",
-    },
-    ref: "docker-workspace",
-  },
-  {
-    t: "17:37",
-    kind: "db",
-    agent: "wordpress",
-    ev: {
-      en: "Plugin install",
-      fa: "نصب افزونه",
-    },
-    ref: "wp-bioscentiran",
-  },
-  {
-    t: "17:39",
-    kind: "gate",
-    agent: "seo",
-    ev: {
-      en: "Approval request",
-      fa: "درخواست تأیید",
-    },
-    ref: "seo-content",
-  },
-  {
-    t: "17:41",
-    kind: "code",
-    agent: "dsh",
-    ev: {
-      en: "Code change",
-      fa: "تغییر کد",
-    },
-    ref: "dsh-agent",
-  },
-  {
-    t: "17:43",
-    kind: "rocket",
-    agent: "antigravity",
-    ev: {
-      en: "Session dropped",
-      fa: "قطع نشست",
-    },
-    ref: "antigravity-ide",
-    bad: true,
-  },
-  {
-    t: "17:46",
-    kind: "pulse",
-    agent: "hermes",
-    ev: {
-      en: "Heartbeat",
-      fa: "ضربان",
-    },
-    ref: "hermes-core",
   },
 ];
 
