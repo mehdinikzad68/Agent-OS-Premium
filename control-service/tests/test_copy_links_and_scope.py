@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 # -*- coding: utf-8 -*-
 """F9 — the copy must not descend through a symlink; F10 — the scope is not a
 client-supplied parameter.

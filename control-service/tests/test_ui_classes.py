@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 # -*- coding: utf-8 -*-
 """Permanent guard: every class used in the UI markup must exist in the sheet.
 

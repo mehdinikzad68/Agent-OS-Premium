@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 # -*- coding: utf-8 -*-
 """The command field is validated at the API edge, and the approval bypass is
 declared out loud. Both facts are load-bearing, so both are pinned here.

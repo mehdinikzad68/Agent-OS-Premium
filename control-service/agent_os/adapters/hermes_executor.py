@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 """Hermes executor — delegates a job to the Hermes agent runtime.
 
 This adapter runs `hermes -z <prompt>` (one-shot mode) and collects the

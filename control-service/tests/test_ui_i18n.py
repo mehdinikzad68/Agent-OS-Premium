@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 """UI i18n tests for the offline mission-control console.
 
 The console is a single self-contained index.html (under agent_os/web) with an

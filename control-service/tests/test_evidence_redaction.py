@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 """M2 (B2): executor evidence is redacted on WRITE (event log) and on
 READ (the /api/jobs/{id}/evidence endpoint).
 

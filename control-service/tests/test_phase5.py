@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 """Phase 5 tests: single-use approvals, action binding, restart durability.
 
 Run against a live HTTP server, not a stub: the dispatcher is what turns an

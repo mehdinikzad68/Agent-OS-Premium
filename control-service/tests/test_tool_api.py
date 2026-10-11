@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 """Phase 3 over real HTTP: discovery and the tool registry.
 
 The unit tests cover the recogniser. These cover the product surface, and they

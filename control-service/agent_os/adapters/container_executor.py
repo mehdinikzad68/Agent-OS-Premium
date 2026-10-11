@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 """Container executor — runs commands inside a Docker container with strict isolation.
 
 This is the Phase 6 executor that closes F2: instead of running commands with

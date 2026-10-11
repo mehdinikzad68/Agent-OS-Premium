@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 """ Hermes executor unit tests: command validation, binary resolution,
 evidence collection, and fail-closed behavior — with subprocess mocked.
 

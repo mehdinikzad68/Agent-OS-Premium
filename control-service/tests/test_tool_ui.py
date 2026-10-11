@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 """The Phase 3 tool panel, checked as structure rather than as pixels.
 
 A browser cannot reach the WSL server from this host, so the panel is verified

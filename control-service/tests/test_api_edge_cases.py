@@ -1,3 +1,8 @@
+# Agent OS — Human-Supervised Agent Operating System
+# Copyright (c) 2026 Mehdi Nikzad Semeskandi
+# SPDX-License-Identifier: Apache-2.0
+# Author: Mehdi Nikzad Semeskandi
+
 """B2 edge cases, all through the HTTP handler (the path a browser takes):
 
 - L1: a naive expires_at is normalised at the edge (was: TypeError -> 500)
