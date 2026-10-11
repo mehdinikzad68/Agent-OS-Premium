@@ -24,6 +24,8 @@ import Timeline from "./components/Timeline.jsx";
 import NavCustomizer from "./components/NavCustomizer.jsx";
 import PageRouter from "./pages/PageRouter.jsx";
 import { createMockAdapter } from "./adapter/mockAdapter.js";
+import { createAgentOsAdapter } from "./adapter/agentOsAdapter.js";
+import { useConnection } from "./connection/ConnectionProvider.jsx";
 import { scopesForAgent } from "./model/memory.js";
 import {
   createLocalStorageAdapter,
@@ -126,11 +128,27 @@ export default function App() {
   );
   // UI feature gates are read from the adapter (skill 08), not
   // hardcoded here — providers differ in what they can back.
-  const capabilities = useMemo(
-    () => adapter.getCapabilities().navCapabilities ?? [],
-    [adapter]
-  );
+  // Computed below, once the live-backend connection state is known.
   const storage = useMemo(() => createLocalStorageAdapter(), []);
+
+  // ---- Phase 2: real Agent OS backend (READ-ONLY adapter) ----
+  // This is a SEPARATE data source from the mock adapter above. The command
+  // canvas keeps using the mock (its agents/connections have no backend
+  // equivalent); the backend-live page reads real missions/jobs/approvals/
+  // events through this adapter. It is only "live" when the header connection
+  // badge reports a healthy backend.
+  const { state: connectionState } = useConnection();
+  const agentOs = useMemo(() => createAgentOsAdapter(), []);
+  const backendLive = connectionState === "connected" || connectionState === "stale";
+  // The "backend-live" nav entry is offered only while a real backend
+  // is reachable (skill 07/08 capability gating — never claim a live
+  // data source that is not actually connected).
+  const capabilities = useMemo(() => {
+    const base = adapter.getCapabilities().navCapabilities ?? [];
+    return backendLive && !base.includes("backend-live")
+      ? [...base, "backend-live"]
+      : base;
+  }, [adapter, backendLive]);
   const [applying, setApplying] = useState(false);
   const [boot, setBoot] = useState("loading");
   const [bootErrors, setBootErrors] = useState([]);
@@ -515,8 +533,10 @@ export default function App() {
       manifest,
       pages,
       models: seed.models,
+      // Real backend adapter + connection state for the backend-live renderer.
+      backend: { adapter: agentOs, status: connectionState, live: backendLive },
     }),
-    [agents, connections, kinds, seed, manifest, pages]
+    [agents, connections, kinds, seed, manifest, pages, agentOs, connectionState, backendLive]
   );
 
   const onDiscard = () => {

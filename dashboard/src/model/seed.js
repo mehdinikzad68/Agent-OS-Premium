@@ -323,6 +323,11 @@ const NAV_SEED = [
   ["pages", "file-text", "/pages", "resource-table"],
   ["settings", "settings", "/settings", "schema-form"],
   ["telemetry", "activity", "/telemetry", "resource-table", ["live-telemetry"]],
+  // Backend live view (Phase 2): real Agent OS missions/jobs/approvals/events.
+  // Gated on the "backend-live" capability, which the app reports only when
+  // the header connection badge is healthy — so this entry is unavailable
+  // (with an explanation) until a real backend is connected.
+  ["backend", "globe", "/backend", "backend-live", ["backend-live"]],
 ];
 
 /** Build the default navigation manifest from the i18n catalog. */

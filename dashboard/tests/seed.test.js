@@ -181,13 +181,13 @@ test("the seed store is labeled demo and reports telemetry honestly", () => {
   assert.equal(telemetryLevel(seed.runtime, "unknown-agent"), "unavailable");
 });
 
-test("the manifest seed resolves to 10 visible entries in order; capability gating explains the unavailable one", () => {
+test("the manifest seed resolves to 11 visible entries in order; capability gating explains the unavailable ones", () => {
   const seed = buildSeedState();
   const resolved = resolveNavItems(seed.manifest, {
     capabilities: ["canvas", "timeline", "resource-tables", "schema-forms"],
     permissions: ["workspace.read"],
   });
-  assert.equal(resolved.length, 10);
+  assert.equal(resolved.length, 11);
   // Hidden ≠ unavailable: every seed entry is visible.
   assert.ok(resolved.every((i) => i.visible));
   assert.deepEqual(
@@ -203,16 +203,22 @@ test("the manifest seed resolves to 10 visible entries in order; capability gati
       "pages",
       "settings",
       "telemetry",
+      "backend",
     ]
   );
-  // 9 entries are supported; the telemetry entry requires
-  // "live-telemetry" — unavailable WITH an explanation.
+  // 9 of 11 entries are supported; telemetry requires
+  // "live-telemetry" and backend requires "backend-live" —
+  // both unavailable WITH an explanation.
   const available = resolved.filter((i) => i.available);
   assert.equal(available.length, 9);
   const telemetry = resolved.find((i) => i.id === "telemetry");
   assert.equal(telemetry.available, false);
   assert.deepEqual(telemetry.missingCapabilities, ["live-telemetry"]);
   assert.ok(telemetry.unavailableReason.includes("live-telemetry"));
+  const backend = resolved.find((i) => i.id === "backend");
+  assert.equal(backend.available, false);
+  assert.deepEqual(backend.missingCapabilities, ["backend-live"]);
+  assert.ok(backend.unavailableReason.includes("backend-live"));
 });
 
 test("the seed pages cover every nav route with known renderers (skill 07)", () => {

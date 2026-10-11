@@ -9,6 +9,7 @@ import {
   ResourceTablePage,
   SchemaFormPage,
   TimelinePage,
+  BackendLivePage,
 } from "./renderers.jsx";
 
 export const RENDERER_REGISTRY = {
@@ -17,4 +18,5 @@ export const RENDERER_REGISTRY = {
   "schema-form": SchemaFormPage,
   timeline: TimelinePage,
   "command-canvas": CommandCanvasPage,
+  "backend-live": BackendLivePage,
 };

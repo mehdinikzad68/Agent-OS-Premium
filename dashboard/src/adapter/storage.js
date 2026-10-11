@@ -311,7 +311,7 @@ export function exportWorkspace({ customTools, connections, view, manifest, page
     {
       schemaVersion: WORKSPACE_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
-      label: "Agent-OS Neural Command workspace export (MOCK demo data)",
+      label: "Agent-OS Agent Steering Console workspace export (MOCK demo data)",
       sections: {
         customTools: customTools || [],
         connections: connections || [],

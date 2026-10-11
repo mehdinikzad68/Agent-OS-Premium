@@ -4,6 +4,7 @@
 // configuration — everything is rendered from the validated
 // workspace context (MOCK/demo data, labeled by the router).
 
+import { useEffect, useState } from "react";
 import { RUN_STATE_COLOR, STATUS_COLOR } from "../scene/colors.js";
 import { elapsedMs, runsInOrder, subagentFreshness } from "../model/runtime.js";
 
@@ -328,6 +329,155 @@ export function CommandCanvasPage({ t, onNavigate }) {
       >
         {t.backToCanvas}
       </button>
+    </div>
+  );
+}
+
+/** backend-live — reads REAL data from the Agent OS control-service through
+ *  the live adapter (ctx.backend). Distinct from every other page: it owns
+ *  its own fetch lifecycle because the data is live, not workspace state.
+ *  When the connection is down it says so — it never fakes a table. */
+export function BackendLivePage({ t, ctx }) {
+  const backend = ctx.backend;
+  const status = backend?.status; // demo | connecting | connected | stale | ... | error
+  const [data, setData] = useState(null);
+  const [fetching, setFetching] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = async () => {
+    if (!backend?.adapter) return;
+    setFetching(true);
+    setError(null);
+    const [missions, jobs, approvals, snapshot] = await Promise.all([
+      backend.adapter.listResources("mission"),
+      backend.adapter.listResources("job"),
+      backend.adapter.listResources("approval"),
+      backend.adapter.getExecutionSnapshot(),
+    ]);
+    // Any typed error is surfaced; we do not render a partial view as success.
+    const firstError = [missions, jobs, approvals, snapshot].find((r) => !r.ok);
+    if (firstError) {
+      setError(firstError.error);
+      setData(null);
+    } else {
+      setData({
+        missions: missions.items,
+        jobs: jobs.items,
+        approvals: approvals.items,
+        events: snapshot.events,
+        fetchedAt: snapshot.fetchedAt,
+      });
+    }
+    setFetching(false);
+  };
+
+  useEffect(() => {
+    if (status === "connected") load();
+  }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const connected = status === "connected" || status === "stale";
+
+  const stat = (label, n, tone) => (
+    <div className="glass px-4 py-3">
+      <div className="text-[14px] text-[var(--mu)]">{label}</div>
+      <div className="mono mt-1 text-[24px]" style={{ color: tone || "var(--tx)" }}>
+        {n}
+      </div>
+    </div>
+  );
+
+  const section = (title, rows) => (
+    <div className="mt-4">
+      <div className="disp text-[16px] text-[var(--sun2)]">{title}</div>
+      {rows.length === 0 ? (
+        <div className="mt-1 text-[13px] text-[var(--mu)]">{t.emptyTable}</div>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-1 text-[13px]">
+          {rows.map((r, i) => (
+            <li key={i} className="rounded border border-[var(--line)] bg-[rgba(2,10,20,.45)] px-3 py-2">
+              {r}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  if (!connected) {
+    return (
+      <div className="glass max-w-[560px] p-5 text-[14px]">
+        <div className="text-[#ffd166]">⚠ {t.backendNotConnected}</div>
+        <p className="mt-2 text-[var(--mu)]">{t.backendNotConnectedHint}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="mock-tag" style={{ borderColor: "rgba(95,240,168,.5)", color: "#5ff0a8" }}>
+          LIVE
+        </span>
+        <span className="text-[13px] text-[var(--mu)]">{t.backendSource}: agent-os</span>
+        <button
+          type="button"
+          onClick={load}
+          disabled={fetching}
+          className="chip ms-auto disabled:opacity-40"
+        >
+          {fetching ? t.applying : t.backendRefresh}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mt-3 rounded border border-[rgba(255,92,122,.4)] bg-[rgba(255,92,122,.08)] px-3 py-2 text-[13px] text-[#ffc0ca]">
+          {error.type}: {error.message}
+        </div>
+      )}
+
+      {data && (
+        <>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {stat(t.backendMissions, data.missions.length)}
+            {stat(t.backendJobs, data.jobs.length)}
+            {stat(t.backendApprovals, data.approvals.length)}
+            {stat(t.backendEvents, data.events.length)}
+          </div>
+
+          {section(
+            t.backendMissions,
+            data.missions.map((m) => (
+              <span className="mono">
+                {m.id} · {m.title} · {m.state}
+              </span>
+            ))
+          )}
+          {section(
+            t.backendJobs,
+            data.jobs.map((j) => (
+              <span className="mono">
+                {j.id} · {j.title} · {j.state}
+              </span>
+            ))
+          )}
+          {section(
+            t.backendApprovals,
+            data.approvals.map((a) => (
+              <span className="mono">
+                {a.id} · {a.job_id} · {a.decision}
+              </span>
+            ))
+          )}
+          {section(
+            t.backendEvents,
+            data.events.slice(-12).map((e) => (
+              <span className="mono">
+                #{e.seq} {e.kind}
+              </span>
+            ))
+          )}
+        </>
+      )}
     </div>
   );
 }

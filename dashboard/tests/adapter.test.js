@@ -461,7 +461,7 @@ test("addNavItem applies through the adapter and keeps the manifest valid", asyn
   assert.ok(res.manifest.items.some((i) => i.id === "audit"));
   assert.equal(validateManifest(res.manifest).ok, true);
   // The base state is never mutated (pure adapter).
-  assert.equal(b.manifest.items.length, 10);
+  assert.equal(b.manifest.items.length, 11);
 });
 
 test("malformed nav entries are rejected with readable reasons", async () => {
@@ -502,7 +502,7 @@ test("moveNav swaps order values and respects list boundaries", async () => {
 
   const edge = await adapter.applyChanges({
     base: b,
-    changes: [navOp("moveNav", { navId: "telemetry", delta: 1 })],
+    changes: [navOp("moveNav", { navId: "backend", delta: 1 })],
   });
   assert.equal(edge.results[0].status, "rejected");
   assert.ok(edge.results[0].reason.includes("already at the"));
@@ -530,7 +530,7 @@ test("setNavVisibility hides an entry without deleting its data", async () => {
   assert.equal(tools.route, "/tools");
   // The entry is NOT in the visible navigation anymore.
   const visible = visibleNavItems(resolveNavItems(res.manifest));
-  assert.equal(visible.length, 9);
+  assert.equal(visible.length, 10);
   assert.equal(visible.some((i) => i.id === "tools"), false);
 
   const unknown = await adapter.applyChanges({

@@ -39,6 +39,7 @@ export const RENDERER_ALLOWLIST = [
   "schema-form",
   "timeline",
   "command-canvas",
+  "backend-live",
 ];
 
 const isNonEmptyString = (v) => typeof v === "string" && v.length > 0;
