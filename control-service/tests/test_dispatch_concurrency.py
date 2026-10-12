@@ -20,7 +20,7 @@ need a second process to be meaningful". That is true of the store's
 internals but false of dispatch()'s sequence, which is what this test pins.
 
 The race window is forced deterministically rather than left to the
-scheduler: agent_os.service.validate_dispatch is wrapped so both threads
+scheduler: agent_os.syscall.validate_dispatch is wrapped so both threads
 complete the policy check (and therefore read the job's pre-dispatch
 state) before either can spend the approval.
 
@@ -42,6 +42,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from agent_os import service as service_mod
+from agent_os import syscall as sc
 from agent_os.adapters.fake import FakeExecutor
 from agent_os.models import (
     ApprovalDecision,
@@ -69,10 +70,10 @@ class DispatchSingleWinnerUnderConcurrencyTest(unittest.TestCase):
         if self.db_path.exists():
             self.db_path.unlink()
         self.svc = ControlService(self.db_path)
-        self._original_validate = service_mod.validate_dispatch
+        self._original_validate = sc.validate_dispatch
 
     def tearDown(self):
-        service_mod.validate_dispatch = self._original_validate
+        sc.validate_dispatch = self._original_validate
         self.svc.close()
         shutil.rmtree(TMP, ignore_errors=True)
 
@@ -109,7 +110,7 @@ class DispatchSingleWinnerUnderConcurrencyTest(unittest.TestCase):
             time.sleep(0.15)
             return denial
 
-        service_mod.validate_dispatch = synchronized_validate
+        sc.validate_dispatch = synchronized_validate
 
         receipts: list = []
         refusals: list = []

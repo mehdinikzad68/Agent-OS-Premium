@@ -71,6 +71,7 @@ from .models import (
     iso,
     utc_now,
 )
+from . import syscall as sc
 from .graphics import Graphic, GraphicKind, GraphicState, render_graphic
 from .policy import validate_dispatch
 from .store import Store, _new_id
@@ -672,6 +673,30 @@ class ControlService:
             return DispatchReceipt(
                 job_id=job_id, attempt=job.attempt_no, final_state=job.state, duplicated=True
             )
+
+        # Phase 1 (KERNEL-GAP.md): the SINGLE GATE. Every dispatch passes
+        # through syscall() before any policy read, spend, or executor call.
+        # If the gate says no, the answer is no - even if everything else
+        # would have allowed it. Fail-closed: a gate crash is a refusal.
+        gate = sc.syscall(
+            self,
+            sc.SyscallRequest(
+                agent_id="dispatch", action="dispatch", job_id=job_id
+            ),
+            now=now,
+        )
+        if not gate.allowed:
+            self.store.record_event(
+                "dispatch_denied", {"job_id": job_id, "reason": gate.reason}
+            )
+            log_event(
+                _log,
+                logging.WARNING,
+                "dispatch.refused",
+                job_id=job_id,
+                reason=gate.reason,
+            )
+            raise DispatchRefused(gate.reason)
 
         # A2: policy validation BEFORE the executor is ever touched. A
         # consumed approval is refused here (policy check 9) - after A6, so an
