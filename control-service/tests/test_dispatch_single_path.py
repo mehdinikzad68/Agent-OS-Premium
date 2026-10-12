@@ -155,8 +155,9 @@ class SinglePathTest(unittest.TestCase):
             e for e in self.svc.store.list_events()
             if e["kind"] == "syscall_verdict"
             and e["payload"].get("job_id") == job.id
+            and e["payload"].get("action") == "dispatch"
         ]
-        self.assertEqual(len(verdicts), 1, "exactly one verdict per dispatch")
+        self.assertEqual(len(verdicts), 1, "exactly one dispatch verdict per dispatch")
         self.assertTrue(verdicts[0]["payload"]["allowed"])
 
 

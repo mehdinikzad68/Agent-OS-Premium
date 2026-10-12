@@ -589,20 +589,34 @@ class ControlService:
         principal: Principal,
         now: Optional[datetime] = None,
     ) -> Approval:
-        if principal is not Principal.HUMAN:
-            self.store.record_event(
-                "approval_decision_rejected",
-                {"approval_id": approval_id, "attempted_by": principal.value},
-            )
-            raise PermissionError(
-                f"only a human principal may decide approvals (got {principal.value})"
-            )
         if self.store.get_approval(approval_id) is None:
             # A3 (B2): resolve BEFORE any write. The old order updated 0
             # rows silently and then hit `assert approval is not None` ->
             # a 500 (and the assert disappears under python -O).
             raise KeyError(approval_id)
+        approval = self.store.get_approval(approval_id)
+
+        # Phase 2 (KERNEL-GAP.md): approval decisions pass through the
+        # syscall gate. Only HUMAN may decide; the gate enforces this.
         now = now or utc_now()
+        action = "approve" if decision is ApprovalDecision.GRANTED else "deny"
+        gate = sc.syscall(
+            self,
+            sc.SyscallRequest(
+                agent_id=principal.value,
+                action=action,
+                job_id=approval.job_id,
+                args={"approval_id": approval_id},
+            ),
+            now=now,
+        )
+        if not gate.allowed:
+            self.store.record_event(
+                "approval_decision_rejected",
+                {"approval_id": approval_id, "attempted_by": principal.value, "reason": gate.reason},
+            )
+            raise PermissionError(gate.reason)
+
         self.store.update_approval_decision(approval_id, decision, iso(now), principal)
         approval = self.store.get_approval(approval_id)
         if approval is None:  # unreachable without a concurrent delete

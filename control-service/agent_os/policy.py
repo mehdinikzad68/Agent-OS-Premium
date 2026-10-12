@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from .models import Approval, ApprovalAction, ApprovalDecision, Job
+from .models import Approval, ApprovalAction, ApprovalDecision, Job, Principal
 
 
 def validate_dispatch(job: Job, approval: Optional[Approval], now: datetime) -> Optional[str]:
@@ -71,4 +71,36 @@ def validate_dispatch(job: Job, approval: Optional[Approval], now: datetime) -> 
     if approval.scope.action is not None:
         if not job.actions or approval.scope.action not in job.actions:
             return f"action_not_approved:{approval.scope.action}"
+    return None
+
+
+
+def validate_approval_decision(
+    approval: Optional[Approval],
+    agent_id: str,
+    action: str,
+    now: datetime,
+) -> Optional[str]:
+    """Return a denial reason string, or None when the decision is allowed.
+
+    Approval decisions have their own policy path, separate from dispatch.
+    Checks (all must pass; first failure wins):
+      1. principal is HUMAN (no self-approval by agents)
+      2. approval record exists
+      3. approval is in REQUESTED state (not yet decided)
+      4. approval has not expired
+      5. action is either "approve" or "deny"
+
+    This is fail-closed: any unexpected state results in a denial.
+    """
+    if agent_id != Principal.HUMAN.value:
+        return f"not_human_principal:{agent_id}"
+    if action not in ("approve", "deny"):
+        return f"unknown_approval_action:{action}"
+    if approval is None:
+        return "approval_not_found"
+    if approval.decision is not ApprovalDecision.REQUESTED:
+        return f"approval_not_requested:{approval.decision.value}"
+    if approval.expires_at is not None and now >= approval.expires_at:
+        return "approval_expired"
     return None

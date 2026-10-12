@@ -107,16 +107,19 @@ class ApiEdgeCasesTest(unittest.TestCase):
             {"job_id": job.id, "expires_at": "2000-01-01T00:00:00"},
         )
         self.assertEqual(st, 201, approval)
+        # Phase 2: decide() passes through the syscall gate, which refuses
+        # expired approvals with 403 (PermissionError). The approval stays
+        # REQUESTED, so dispatch is refused with approval_not_granted.
         st, _ = self.api.handle(
             "POST", f"/api/approvals/{approval['id']}/decide",
             {"decision": "granted"},
         )
-        self.assertEqual(st, 200)
+        self.assertEqual(st, 403)
         st, body = self.api.handle(
             "POST", f"/api/jobs/{job.id}/dispatch", {}
         )
         self.assertEqual(st, 409, body)
-        self.assertIn("approval_expired", body["error"]["message"])
+        self.assertIn("approval_not_granted", body["error"]["message"])
 
     # -- M3 -------------------------------------------------------------
 

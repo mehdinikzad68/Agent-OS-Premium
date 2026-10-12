@@ -28,18 +28,22 @@ from datetime import datetime
 from typing import Optional
 
 from .logging_setup import get_logger, log_event
-from .models import Approval, DispatchReceipt, Job, utc_now
-from .policy import validate_dispatch
+from .models import Approval, DispatchReceipt, Job, Principal, utc_now
+from .policy import validate_dispatch, validate_approval_decision
 
 _log = get_logger("syscall")
 
 #: The actions this gate knows how to authorize. Anything else is denied.
 #: Phase 1 ships exactly one action: "dispatch" (run an approved job).
-KNOWN_ACTIONS = frozenset({"dispatch"})
+KNOWN_ACTIONS = frozenset({"dispatch", "approve", "deny"})
 
 REASON_UNKNOWN_ACTION = "unknown_action"
 REASON_NO_JOB = "job_not_found"
 REASON_POLICY_ERROR = "policy_error_fail_closed"
+REASON_NOT_HUMAN = "not_human_principal"
+REASON_NO_APPROVAL = "approval_not_found"
+REASON_NOT_REQUESTED = "approval_not_requested"
+REASON_APPROVAL_EXPIRED = "approval_expired"
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,10 @@ def evaluate(
     if request.action not in KNOWN_ACTIONS:
         return _deny(request, REASON_UNKNOWN_ACTION)
 
+    # Approval decisions (approve/deny) have their own policy path.
+    if request.action in ("approve", "deny"):
+        return _evaluate_approval(request, approval, now)
+
     if job is None:
         return _deny(request, REASON_NO_JOB)
 
@@ -108,6 +116,38 @@ def evaluate(
             _log,
             40,
             "syscall.policy_error",
+            action=request.action,
+            agent_id=request.agent_id,
+            job_id=request.job_id,
+            exc_info=True,
+        )
+        return _deny(request, REASON_POLICY_ERROR)
+
+    if denial is not None:
+        return _deny(request, denial)
+
+    return SyscallVerdict(
+        allowed=True,
+        reason="allowed",
+        action=request.action,
+        agent_id=request.agent_id,
+        job_id=request.job_id,
+    )
+
+
+def _evaluate_approval(
+    request: SyscallRequest,
+    approval: Optional[Approval],
+    now: datetime,
+) -> SyscallVerdict:
+    """Evaluate an approve/deny request. Separate policy path from dispatch."""
+    try:
+        denial = validate_approval_decision(approval, request.agent_id, request.action, now)
+    except Exception:  # noqa: BLE001 - fail-closed
+        log_event(
+            _log,
+            40,
+            "syscall.approval_policy_error",
             action=request.action,
             agent_id=request.agent_id,
             job_id=request.job_id,
